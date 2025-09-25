@@ -18,8 +18,18 @@ export async function loginUser(identifier, password) {
     throw new Error("Unexpected response from the server. Please try again later.");
   }
 
+  if (result.token && result.user) {
+    const { default: authService } = await import("../../src/utils/auth.js");
+    authService.saveAuth(result.token, result.user);
+  }
+
   if (!response.ok) {
-    // Attach the result to the error for downstream usage
+    if (response.status === 403 && result.token && result.user) {
+      const error = new Error(result.message);
+      error.result = result;
+      throw error;
+    }
+    
     const error = new Error(result.message || `Failed to log in: ${response.status} ${response.statusText}`);
     error.result = result;
     throw error;

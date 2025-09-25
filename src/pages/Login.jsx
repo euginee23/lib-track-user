@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Link } from "react-router-dom";
 import { IoEyeOutline, IoEyeOffOutline } from "react-icons/io5";
 import { useNavigate } from "react-router-dom";
 import ToastNotification from "../components/ToastNotification";
@@ -36,30 +37,26 @@ export default function Login() {
     try {
       setLoading(true);
       const response = await loginUser(email, password);
-  ToastNotification.success(`Login successful! Welcome, ${response.user.firstName} ${response.user.lastName}.`);
       
-      navigate("/dashboard");
+      // If we reach here, server returned 200 - user is fully verified and approved
+      ToastNotification.success(`Hello, ${response.user.firstName} ${response.user.lastName}`);
+      navigate("/home", { replace: true });
+      
     } catch (error) {
-      if (error.message.includes("verify your email")) {
-        if (error.result?.user?.email) {
-          navigate("/verify-email", { state: { email: error.result.user.email } });
+      if (error.result?.user && error.result?.token) {
+        const user = error.result.user;
+        
+        ToastNotification.success(`Hello, ${user.firstName} ${user.lastName}`);
+        
+        if (user.email_verification === 0) {
+          navigate("/verify-email", { state: { email: user.email }, replace: true });
+        } else if (user.librarian_approval === 0) {
+          navigate("/librarian-approval", { state: { userEmail: user.email }, replace: true });
         } else {
-          ToastNotification.error("Unable to retrieve email for verification.");
-        }
-      } else if (error.message.includes("pending librarian approval and email verification")) {
-        if (error.result?.user?.email) {
-          navigate("/verify-email", { state: { email: error.result.user.email } });
-        } else {
-          ToastNotification.error("Unable to retrieve email for verification.");
-        }
-      } else if (error.message.includes("pending librarian approval")) {
-        if (error.result?.user?.email) {
-          navigate("/librarian-approval", { state: { userEmail: error.result.user.email } });
-        } else {
-          navigate("/librarian-approval");
+          navigate("/home", { replace: true });
         }
       } else {
-  ToastNotification.error(error.message);
+        ToastNotification.error(error.message);
       }
     } finally {
       setLoading(false);
@@ -181,6 +178,7 @@ export default function Login() {
           text-align: center;
           font-size: 0.9rem;
           color: ${palette.blueGray};
+          margin-bottom: 0.75rem;
         }
         .register-link a {
           color: ${palette.teal};
@@ -188,6 +186,18 @@ export default function Login() {
           font-weight: 600;
         }
         .register-link a:hover {
+          text-decoration: underline;
+        }
+        .forgot-password-link {
+          text-align: center;
+          font-size: 0.85rem;
+          color: ${palette.blueGray};
+        }
+        .forgot-password-link a {
+          color: ${palette.teal};
+          text-decoration: none;
+        }
+        .forgot-password-link a:hover {
           text-decoration: underline;
         }
         @media (max-width: 480px) {
@@ -313,7 +323,11 @@ export default function Login() {
         </button>
         
         <div className="register-link">
-          Haven't signed up? <a href="/register">Register here</a>
+          Haven't signed up? <Link to="/register">Register here</Link>
+        </div>
+        
+        <div className="forgot-password-link">
+          <Link to="/forgot-password">Forgot your password?</Link>
         </div>
       </form>
     </div>

@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { requestEmailVerification } from "../../api/login/user_emailVerification";
 import { verifyEmailCode } from "../../api/login/user_emailVerifyCode";
 import ToastNotification from "../components/ToastNotification";
+import authService from "../utils/auth";
 
 const palette = {
   darkest: "#031716",
@@ -23,9 +24,31 @@ export default function VerifyEmail() {
   const location = useLocation();
 
   useEffect(() => {
-    // Get email from navigation state if passed from login
+    // Prevent navigation back to login/register when authenticated
+    if (authService.isAuthenticated()) {
+      const handlePopState = (event) => {
+        event.preventDefault();
+        // Stay on current page
+        window.history.pushState(null, null, "/verify-email");
+      };
+      
+      // Prevent back button
+      window.history.pushState(null, null, "/verify-email");
+      window.addEventListener("popstate", handlePopState);
+      
+      return () => {
+        window.removeEventListener("popstate", handlePopState);
+      };
+    }
+  }, []);
+
+  useEffect(() => {
+    // Get email from navigation state if passed from login or from stored user
+    const user = authService.getUser();
     if (location.state?.email) {
       setEmail(location.state.email);
+    } else if (user?.email) {
+      setEmail(user.email);
     }
   }, [location.state]);
 
@@ -82,13 +105,23 @@ export default function VerifyEmail() {
       
       ToastNotification.success("Email verified successfully!");
       
-      // CHECK LIBRARIAN APPROVAL STATUS TO DETERMINE REDIRECT
+      // Update the stored user data with new verification status
+      const currentUser = authService.getUser();
+      if (currentUser) {
+        const updatedUser = {
+          ...currentUser,
+          email_verified: 1
+        };
+        authService.updateUser(updatedUser);
+      }
+      
+      // Navigation Logic: Email verified, now check librarian approval
       if (result.librarian_approval === 1) {
-        // USER IS APPROVED, REDIRECT TO DASHBOARD
-        navigate("/dashboard");
+        // Both email verified and librarian approved - go to home
+        navigate("/home", { replace: true });
       } else {
-        // USER STILL NEEDS LIBRARIAN APPROVAL
-        navigate("/librarian-approval", { state: { userEmail: email } });
+        // Email verified but librarian approval pending
+        navigate("/librarian-approval", { state: { userEmail: email }, replace: true });
       }
       
     } catch (error) {
@@ -96,6 +129,10 @@ export default function VerifyEmail() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleLogout() {
+    authService.logoutAndRedirect(navigate);
   }
 
   return (
@@ -279,7 +316,7 @@ export default function VerifyEmail() {
           type="button"
           className="verify-btn"
           style={{ background: palette.blueGray, marginTop: "0.5rem" }}
-          onClick={() => navigate("/login")}
+          onClick={handleLogout}
         >
           Log Out
         </button>
