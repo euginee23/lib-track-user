@@ -6,6 +6,8 @@ import Register from "./pages/Register";
 import ToastNotification from "./components/ToastNotification";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import VerifyEmail from "./pages/VerifyEmail";
+import LibrarianApproval from "./pages/LibrarianApproval";
 
 import { useLocation } from 'react-router-dom';
 
@@ -70,7 +72,7 @@ function Profile() {
 
 function AppContent() {
   const location = useLocation();
-  const hideNavbarPaths = ['/login', '/register', '*'];
+  const hideNavbarPaths = ['/login', '/register','/verify-email', '/librarian-approval', '*'];
 
   return (
     <div className="min-vh-100 d-flex flex-column" style={{ 
@@ -88,6 +90,8 @@ function AppContent() {
             <Route path="/login" element={<Login />} />
             <Route path="*" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/librarian-approval" element={<LibrarianApproval />} />
           </Routes>
         </main>
       </div>

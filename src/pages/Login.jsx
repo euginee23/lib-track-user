@@ -1,5 +1,8 @@
 import React, { useState } from "react";
 import { IoEyeOutline, IoEyeOffOutline } from "react-icons/io5";
+import { useNavigate } from "react-router-dom";
+import ToastNotification from "../components/ToastNotification";
+import { loginUser } from "../../api/login/user_login";
 
 const palette = {
   darkest: "#031716",
@@ -14,11 +17,53 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-    // TODO: Add login logic
-    alert("Login submitted!");
+
+    if (!email) {
+      ToastNotification.error("Please enter your email, student ID, or contact number.");
+      return;
+    }
+
+    if (!password) {
+      ToastNotification.error("Please enter your password.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await loginUser(email, password);
+  ToastNotification.success(`Login successful! Welcome, ${response.user.firstName} ${response.user.lastName}.`);
+      
+      navigate("/dashboard");
+    } catch (error) {
+      if (error.message.includes("verify your email")) {
+        if (error.result?.user?.email) {
+          navigate("/verify-email", { state: { email: error.result.user.email } });
+        } else {
+          ToastNotification.error("Unable to retrieve email for verification.");
+        }
+      } else if (error.message.includes("pending librarian approval and email verification")) {
+        if (error.result?.user?.email) {
+          navigate("/verify-email", { state: { email: error.result.user.email } });
+        } else {
+          ToastNotification.error("Unable to retrieve email for verification.");
+        }
+      } else if (error.message.includes("pending librarian approval")) {
+        if (error.result?.user?.email) {
+          navigate("/librarian-approval", { state: { userEmail: error.result.user.email } });
+        } else {
+          navigate("/librarian-approval");
+        }
+      } else {
+  ToastNotification.error(error.message);
+      }
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -191,20 +236,25 @@ export default function Login() {
         }
         @media (min-width: 768px) {
           .login-card {
-            max-width: 500px; // Increased width for desktop
-            padding: 2rem; // Adjusted padding for larger screens
+            max-width: 500px; 
+            padding: 2rem; 
           }
           .login-title {
-            font-size: 1.8rem; // Larger font size for desktop
+            font-size: 1.8rem;
           }
           .login-desc {
-            font-size: 1rem; // Adjusted font size
+            font-size: 1rem; 
           }
           .login-input {
-            font-size: 1.1rem; // Larger input text
+            font-size: 1.1rem;
           }
           .login-btn {
-            font-size: 1.1rem; // Adjusted button text size
+            font-size: 1.1rem; 
+          }
+        }
+        @keyframes spin {
+          to {
+            transform: rotate(360deg);
           }
         }
       `}</style>
@@ -212,11 +262,11 @@ export default function Login() {
         <div className="login-title">Welcome to Lib-Track!</div>
         <div className="login-desc">Log in to your account</div>
         
-        <label className="login-label" htmlFor="email">Email</label>
+        <label className="login-label" htmlFor="email">Email | Student ID | Phone Number</label>
         <div className="input-container">
           <input
             className="login-input"
-            type="email"
+            type="text"
             id="email"
             autoComplete="username"
             value={email}
@@ -246,7 +296,21 @@ export default function Login() {
           </button>
         </div>
         
-        <button className="login-btn" type="submit">Log In</button>
+        <button className="login-btn" type="submit" disabled={loading}>
+          {loading ? (
+            <div className="spinner" style={{
+              border: "4px solid rgba(0, 0, 0, 0.1)",
+              borderLeftColor: palette.lightBlue,
+              borderRadius: "50%",
+              width: "20px",
+              height: "20px",
+              animation: "spin 1s linear infinite",
+              margin: "0 auto"
+            }}></div>
+          ) : (
+            "Log In"
+          )}
+        </button>
         
         <div className="register-link">
           Haven't signed up? <a href="/register">Register here</a>
