@@ -23,6 +23,7 @@ import NotFound from "./pages/NotFound";
 import ForgotPassword from "./pages/ForgotPassword";
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import LoginToKiosk from "./pages/LoginToKiosk";
 
 import authService from "./utils/auth";
 
@@ -47,7 +48,7 @@ function App() {
       }
 
       // Only truly public paths that don't require authentication
-      const publicPaths = ["/", "/login", "/register", "/forgot-password"];
+      const publicPaths = ["/", "/login", "/register", "/forgot-password", "/login-to-kiosk"];
       
       if (!isAuth && !publicPaths.includes(location.pathname)) {
         navigate("/");
@@ -122,10 +123,18 @@ function App() {
 
   const AuthRedirect = ({ children }) => {
     const [shouldRender, setShouldRender] = useState(null);
-    
+
     useEffect(() => {
       const checkRedirect = async () => {
         const isAuth = checkAuth();
+        const currentPath = location.pathname;
+
+        // Allow access to /login-to-kiosk even if authenticated
+        if (isAuth && currentPath === "/login-to-kiosk") {
+          setShouldRender(children);
+          return;
+        }
+
         if (!isAuth) {
           setShouldRender(children);
           return;
@@ -151,7 +160,7 @@ function App() {
       };
 
       checkRedirect();
-    }, [children]);
+    }, [children, location.pathname]);
 
     if (shouldRender === null) {
       return (
@@ -474,6 +483,14 @@ function App() {
               <ProtectedRoute>
                 <Profile />
               </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/login-to-kiosk"
+            element={
+              <AuthRedirect>
+                <LoginToKiosk />
+              </AuthRedirect>
             }
           />
           {/* 404 NOT FOUND */}

@@ -38,7 +38,6 @@ export default function Login() {
       setLoading(true);
       const response = await loginUser(email, password);
       
-      // If we reach here, server returned 200 - user is fully verified and approved
       ToastNotification.success(`Hello, ${response.user.firstName} ${response.user.lastName}`);
       navigate("/home", { replace: true });
       

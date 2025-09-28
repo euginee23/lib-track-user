@@ -123,23 +123,6 @@ export default function LibrarianApproval() {
           flex-direction: column;
           gap: 0.75rem;
         }
-        .refresh-btn {
-          width: 100%;
-          padding: 0.75rem 0;
-          background: linear-gradient(90deg, ${palette.midTeal} 0%, ${palette.lightBlue} 100%);
-          color: #fff;
-          font-size: 1rem;
-          font-weight: 600;
-          border: none;
-          border-radius: 8px;
-          box-shadow: 0 2px 8px rgba(44,62,80,0.10);
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-        .refresh-btn:hover {
-          background: linear-gradient(90deg, ${palette.lightBlue} 0%, ${palette.midTeal} 100%);
-          transform: translateY(-1px);
-        }
         .logout-btn {
           width: 100%;
           padding: 0.75rem 0;
@@ -197,9 +180,6 @@ export default function LibrarianApproval() {
         </div>
 
         <div className="action-buttons">
-          <button className="refresh-btn" onClick={checkApprovalStatus}>
-            Check Approval Status
-          </button>
           <button className="logout-btn" onClick={handleLogout}>
             Log Out
           </button>
