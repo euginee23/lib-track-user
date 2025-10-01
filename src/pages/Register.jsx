@@ -1,8 +1,17 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { registerUser } from "../../api/registration/user_registration";
-import { FaEye, FaEyeSlash } from "react-icons/fa";
+import { fetchDepartments } from "../../api/registration/get_departments";
+import {
+  FaEye,
+  FaEyeSlash,
+  FaCamera,
+  FaTrash,
+  FaFolder,
+  FaFileImage,
+} from "react-icons/fa";
 import ToastNotification from "../components/ToastNotification";
 import { useNavigate } from "react-router-dom";
+import Camera from "../components/Camera";
 
 const palette = {
   darkest: "#031716",
@@ -10,24 +19,47 @@ const palette = {
   teal: "#0A7075",
   midTeal: "#0C969C",
   lightBlue: "#6BA3BE",
-  blueGray: "#274D60"
+  blueGray: "#274D60",
 };
 
 export default function Register() {
+  const [userType, setUserType] = useState("student");
   const [firstName, setFirstName] = useState("");
   const [middleName, setMiddleName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [studentId, setStudentId] = useState("");
+  const [facultyId, setFacultyId] = useState("");
   const [contactNumber, setContactNumber] = useState("");
+  const [college, setCollege] = useState("");
+  const [position, setPosition] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [corImage, setCorImage] = useState(null);
   const [corImagePreview, setCorImagePreview] = useState(null);
+  const [profileImage, setProfileImage] = useState(null);
+  const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const [departments, setDepartments] = useState([]);
   const navigate = useNavigate();
+
+  const facultyPositions = ["Regular", "Visiting Lecturer"];
+
+  useEffect(() => {
+    async function loadDepartments() {
+      try {
+        const fetchedDepartments = await fetchDepartments();
+        setDepartments(fetchedDepartments);
+      } catch (error) {
+        console.error("Failed to load departments:", error);
+      }
+    }
+
+    loadDepartments();
+  }, []);
 
   function handleStudentIdChange(e) {
     let value = e.target.value.replace(/[^0-9]/g, "");
@@ -37,10 +69,20 @@ export default function Register() {
     }
 
     if (value.length > 4) {
-      value = value.slice(0, 4) + "-" + value.slice(4); 
+      value = value.slice(0, 4) + "-" + value.slice(4);
     }
 
     setStudentId(value);
+  }
+
+  function handleFacultyIdChange(e) {
+    let value = e.target.value.replace(/[^0-9]/g, "");
+
+    if (value.length > 10) {
+      value = value.slice(0, 10);
+    }
+
+    setFacultyId(value);
   }
 
   function handleContactNumberChange(e) {
@@ -62,14 +104,25 @@ export default function Register() {
     if (!middleName) missingFields.push("Middle Name");
     if (!lastName) missingFields.push("Last Name");
     if (!email) missingFields.push("Email");
-    if (!studentId) missingFields.push("Student ID");
     if (!contactNumber) missingFields.push("Contact Number");
+    if (!college) missingFields.push("College/Department");
     if (!password) missingFields.push("Password");
     if (!confirmPassword) missingFields.push("Confirm Password");
-    if (!corImage) missingFields.push("Photo of your COR");
+
+    if (userType === "student") {
+      if (!studentId) missingFields.push("Student ID");
+      if (!corImage) missingFields.push("Photo of your COR");
+      if (!profileImage) missingFields.push("Profile Picture");
+    } else {
+      if (!facultyId) missingFields.push("Faculty ID");
+      if (!position) missingFields.push("Position");
+      if (!profileImage) missingFields.push("Profile Picture");
+    }
 
     if (missingFields.length > 0) {
-      ToastNotification.error(`Please fill in the following fields: ${missingFields.join(", ")}`);
+      ToastNotification.error(
+        `Please fill in the following fields: ${missingFields.join(", ")}`
+      );
       return;
     }
 
@@ -78,15 +131,27 @@ export default function Register() {
       return;
     }
 
+    // Set position based on userType
+    const finalPosition = userType === "student" ? "Student" : position;
+
     const user = {
       firstName,
       middleName,
       lastName,
       email,
-      studentId,
       contactNumber,
+      college,
+      position: finalPosition,
       password,
-      corImage,
+      profileImage,
+      ...(userType === "student"
+        ? {
+            studentId,
+            corImage,
+          }
+        : {
+            facultyId,
+          }),
     };
 
     setLoading(true);
@@ -98,7 +163,9 @@ export default function Register() {
       console.error("Error during registration:", error);
 
       if (error.message.startsWith("Conflicts:")) {
-        const conflictFields = error.message.replace("Conflicts: ", "").split(", ");
+        const conflictFields = error.message
+          .replace("Conflicts: ", "")
+          .split(", ");
         const conflictMessages = conflictFields.map((field) => {
           switch (field) {
             case "email":
@@ -113,23 +180,48 @@ export default function Register() {
         });
         ToastNotification.error(conflictMessages.join(" "));
       } else {
-        ToastNotification.error(error.message || "An error occurred during registration.");
+        ToastNotification.error(
+          error.message || "An error occurred during registration."
+        );
       }
     } finally {
       setLoading(false);
     }
   }
 
-  function handleImageChange(e) {
+  function handleImageChange(e, imageType) {
     const file = e.target.files[0];
     if (file) {
-      setCorImage(file);
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setCorImagePreview(e.target.result);
-      };
-      reader.readAsDataURL(file);
+      if (imageType === "cor") {
+        setCorImage(file);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          setCorImagePreview(e.target.result);
+        };
+        reader.readAsDataURL(file);
+      } else if (imageType === "profile") {
+        setProfileImage(file);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          setProfileImagePreview(e.target.result);
+        };
+        reader.readAsDataURL(file);
+      }
     }
+  }
+
+  function handleCameraCapture(file, imageUrl) {
+    setProfileImage(file);
+    setProfileImagePreview(imageUrl);
+  }
+
+  function handleRemoveProfileImage() {
+    // Clean up the existing image URL to prevent memory leaks
+    if (profileImagePreview) {
+      URL.revokeObjectURL(profileImagePreview);
+    }
+    setProfileImage(null);
+    setProfileImagePreview(null);
   }
 
   return (
@@ -143,7 +235,7 @@ export default function Register() {
         background: `linear-gradient(135deg, ${palette.lightBlue} 0%, ${palette.midTeal} 50%, ${palette.teal} 100%)`,
         padding: "1rem",
         boxSizing: "border-box",
-        paddingBottom: "3rem"
+        paddingBottom: "3rem",
       }}
     >
       <style>{`
@@ -285,6 +377,71 @@ export default function Register() {
           background: linear-gradient(90deg, ${palette.midTeal} 0%, ${palette.teal} 100%);
           transform: translateY(-1px);
         }
+        .user-type-selector {
+          display: flex;
+          background: #f9fbfc;
+          border-radius: 8px;
+          border: 1.5px solid ${palette.midTeal};
+          margin-bottom: 1.5rem;
+          overflow: hidden;
+        }
+        .user-type-option {
+          flex: 1;
+          padding: 0.75rem;
+          text-align: center;
+          cursor: pointer;
+          background: transparent;
+          border: none;
+          color: ${palette.blueGray};
+          font-weight: 500;
+          transition: all 0.2s;
+        }
+        .user-type-option.active {
+          background: ${palette.teal};
+          color: white;
+        }
+        .user-type-option:hover:not(.active) {
+          background: rgba(12, 150, 156, 0.1);
+        }
+        .select-input {
+          width: 100%;
+          padding: 0.5rem 0.8rem;
+          border-radius: 8px;
+          border: 1.5px solid ${palette.midTeal};
+          background: #f9fbfc;
+          color: ${palette.darkest};
+          font-size: 1rem;
+          outline: none;
+          transition: border-color 0.2s;
+        }
+        .select-input:focus {
+          border-color: ${palette.teal};
+        }
+        .upload-options {
+          display: flex;
+          gap: 0.5rem;
+          margin-top: 0.5rem;
+          justify-content: center;
+        }
+        .camera-btn, .upload-btn {
+          flex: 1;
+          padding: 0.5rem;
+          border: 1px solid ${palette.midTeal};
+          background: #f9fbfc;
+          color: ${palette.darkTeal};
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 0.85rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.25rem;
+          transition: all 0.2s;
+        }
+        .camera-btn:hover, .upload-btn:hover {
+          background: ${palette.teal};
+          color: white;
+        }
         .login-link {
           text-align: center;
           font-size: 0.9rem;
@@ -378,8 +535,32 @@ export default function Register() {
       <form className="register-card" onSubmit={handleSubmit}>
         <div className="register-title">Create Your Account</div>
         <div className="register-desc">Sign up to access Lib-Track</div>
-        
-        <label className="register-label" htmlFor="firstName">First Name</label>
+
+        {/* User Type Selector */}
+        <div className="user-type-selector">
+          <button
+            type="button"
+            className={`user-type-option ${
+              userType === "student" ? "active" : ""
+            }`}
+            onClick={() => setUserType("student")}
+          >
+            Student
+          </button>
+          <button
+            type="button"
+            className={`user-type-option ${
+              userType === "faculty" ? "active" : ""
+            }`}
+            onClick={() => setUserType("faculty")}
+          >
+            Faculty
+          </button>
+        </div>
+
+        <label className="register-label" htmlFor="firstName">
+          First Name
+        </label>
         <div className="input-container">
           <input
             className="register-input"
@@ -387,11 +568,13 @@ export default function Register() {
             id="firstName"
             autoComplete="given-name"
             value={firstName}
-            onChange={e => setFirstName(e.target.value)}
+            onChange={(e) => setFirstName(e.target.value)}
           />
         </div>
 
-        <label className="register-label" htmlFor="middleName">Middle Name</label>
+        <label className="register-label" htmlFor="middleName">
+          Middle Name
+        </label>
         <div className="input-container">
           <input
             className="register-input"
@@ -399,11 +582,13 @@ export default function Register() {
             id="middleName"
             autoComplete="additional-name"
             value={middleName}
-            onChange={e => setMiddleName(e.target.value)}
+            onChange={(e) => setMiddleName(e.target.value)}
           />
         </div>
 
-        <label className="register-label" htmlFor="lastName">Last Name</label>
+        <label className="register-label" htmlFor="lastName">
+          Last Name
+        </label>
         <div className="input-container">
           <input
             className="register-input"
@@ -411,23 +596,250 @@ export default function Register() {
             id="lastName"
             autoComplete="family-name"
             value={lastName}
-            onChange={e => setLastName(e.target.value)}
-          />
-        </div>
-        
-        <label className="register-label" htmlFor="studentId">Student ID</label>
-        <div className="input-container">
-          <input
-            className="register-input"
-            type="text"
-            id="studentId"
-            value={studentId}
-            onChange={handleStudentIdChange}
-            placeholder="1234-5678"
+            onChange={(e) => setLastName(e.target.value)}
           />
         </div>
 
-        <label className="register-label" htmlFor="contactNumber">Contact Number</label>
+        {/* Student-specific fields */}
+        {userType === "student" && (
+          <>
+            <label className="register-label" htmlFor="studentId">
+              Student ID
+            </label>
+            <div className="input-container">
+              <input
+                className="register-input"
+                type="text"
+                id="studentId"
+                value={studentId}
+                onChange={handleStudentIdChange}
+                placeholder="1234-5678"
+              />
+            </div>
+
+            <label className="register-label">Profile Picture</label>
+            <div className="input-container">
+              <div
+                className={`image-upload-container ${
+                  profileImagePreview ? "has-image" : ""
+                }`}
+              >
+                <input
+                  type="file"
+                  id="profileImageStudent"
+                  className="image-upload-input"
+                  accept="image/*"
+                  onChange={(e) => handleImageChange(e, "profile")}
+                />
+                {profileImagePreview ? (
+                  <div>
+                    <img
+                      src={profileImagePreview}
+                      alt="Profile Preview"
+                      className="image-preview"
+                    />
+                    <div className="upload-hint">Your profile picture</div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="upload-text">
+                      <FaCamera /> Add your profile picture
+                    </div>
+                    <div className="upload-hint">PNG, JPG, JPEG up to 10MB</div>
+                  </div>
+                )}
+              </div>
+              <div className="upload-options">
+                {profileImagePreview ? (
+                  <button
+                    type="button"
+                    className="camera-btn"
+                    onClick={handleRemoveProfileImage}
+                    style={{ background: "#dc3545", borderColor: "#dc3545" }}
+                  >
+                    <FaTrash /> Remove Selfie
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="camera-btn"
+                    onClick={() => setShowCamera(true)}
+                  >
+                    <FaCamera /> Take Selfie
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="upload-btn"
+                  onClick={() =>
+                    document.getElementById("profileImageStudent").click()
+                  }
+                >
+                  <FaFolder /> Upload Photo
+                </button>
+              </div>
+            </div>
+
+            <label className="register-label">Upload a photo of your COR</label>
+            <div className="input-container">
+              <div
+                className={`image-upload-container ${
+                  corImagePreview ? "has-image" : ""
+                }`}
+                onClick={() => document.getElementById("corImage").click()}
+              >
+                <input
+                  type="file"
+                  id="corImage"
+                  className="image-upload-input"
+                  accept="image/*"
+                  onChange={(e) => handleImageChange(e, "cor")}
+                />
+                {corImagePreview ? (
+                  <div>
+                    <img
+                      src={corImagePreview}
+                      alt="COR Preview"
+                      className="image-preview"
+                    />
+                    <div className="upload-hint">Click to change image</div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="upload-text">
+                      <FaFileImage /> Click to upload your COR
+                    </div>
+                    <div className="upload-hint">PNG, JPG, JPEG up to 10MB</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Faculty-specific fields */}
+        {userType === "faculty" && (
+          <>
+            <label className="register-label" htmlFor="facultyId">
+              Faculty ID Number
+            </label>
+            <div className="input-container">
+              <input
+                className="register-input"
+                type="text"
+                id="facultyId"
+                value={facultyId}
+                onChange={handleFacultyIdChange}
+                placeholder="1234567890"
+              />
+            </div>
+
+            <label className="register-label" htmlFor="position">
+              Position
+            </label>
+            <div className="input-container">
+              <select
+                className="select-input"
+                id="position"
+                value={position}
+                onChange={(e) => setPosition(e.target.value)}
+              >
+                <option value="">Select your position</option>
+                {facultyPositions.map((pos, index) => (
+                  <option key={index} value={pos}>
+                    {pos}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <label className="register-label">Profile Picture</label>
+            <div className="input-container">
+              <div
+                className={`image-upload-container ${
+                  profileImagePreview ? "has-image" : ""
+                }`}
+              >
+                <input
+                  type="file"
+                  id="profileImageFaculty"
+                  className="image-upload-input"
+                  accept="image/*"
+                  onChange={(e) => handleImageChange(e, "profile")}
+                />
+                {profileImagePreview ? (
+                  <div>
+                    <img
+                      src={profileImagePreview}
+                      alt="Profile Preview"
+                      className="image-preview"
+                    />
+                    <div className="upload-hint">Your profile picture</div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="upload-text">
+                      <FaCamera /> Add your profile picture
+                    </div>
+                    <div className="upload-hint">PNG, JPG, JPEG up to 10MB</div>
+                  </div>
+                )}
+              </div>
+              <div className="upload-options">
+                {profileImagePreview ? (
+                  <button
+                    type="button"
+                    className="camera-btn"
+                    onClick={handleRemoveProfileImage}
+                    style={{ background: "#dc3545", borderColor: "#dc3545" }}
+                  >
+                    <FaTrash /> Remove Selfie
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="camera-btn"
+                    onClick={() => setShowCamera(true)}
+                  >
+                    <FaCamera /> Take Selfie
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="upload-btn"
+                  onClick={() =>
+                    document.getElementById("profileImageFaculty").click()
+                  }
+                >
+                  <FaFolder /> Upload Photo
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        <label className="register-label" htmlFor="college">
+          College/Department
+        </label>
+        <div className="input-container">
+          <select
+            className="select-input"
+            id="college"
+            value={college}
+            onChange={(e) => setCollege(e.target.value)}
+          >
+            <option value="">Select your college</option>
+            {departments.map((dept) => (
+              <option key={dept.department_id} value={dept.department_acronym}>
+                {dept.department_acronym} - {dept.department_name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <label className="register-label" htmlFor="contactNumber">
+          Contact Number
+        </label>
         <div className="input-container">
           <input
             className="register-input"
@@ -439,36 +851,17 @@ export default function Register() {
           />
         </div>
 
-        <label className="register-label">Upload a photo of your COR</label>
-        <div className="input-container">
-          <div 
-            className={`image-upload-container ${corImagePreview ? 'has-image' : ''}`}
-            onClick={() => document.getElementById('corImage').click()}
-          >
-            <input
-              type="file"
-              id="corImage"
-              className="image-upload-input"
-              accept="image/*"
-              onChange={handleImageChange}
-            />
-            {corImagePreview ? (
-              <div>
-                <img src={corImagePreview} alt="COR Preview" className="image-preview" />
-                <div className="upload-hint">Click to change image</div>
-              </div>
-            ) : (
-              <div>
-                <div className="upload-text">📄 Click to upload your COR</div>
-                <div className="upload-hint">PNG, JPG, JPEG up to 10MB</div>
-              </div>
-            )}
-          </div>
-        </div>
-        
-        <hr style={{ margin: '1.5rem 0', border: 'none', borderTop: `1px solid ${palette.midTeal}` }} />
+        <hr
+          style={{
+            margin: "1.5rem 0",
+            border: "none",
+            borderTop: `1px solid ${palette.midTeal}`,
+          }}
+        />
 
-        <label className="register-label" htmlFor="email">Email</label>
+        <label className="register-label" htmlFor="email">
+          Email
+        </label>
         <div className="input-container">
           <input
             className="register-input"
@@ -476,11 +869,13 @@ export default function Register() {
             id="email"
             autoComplete="email"
             value={email}
-            onChange={e => setEmail(e.target.value)}
+            onChange={(e) => setEmail(e.target.value)}
           />
         </div>
 
-        <label className="register-label" htmlFor="password">Password</label>
+        <label className="register-label" htmlFor="password">
+          Password
+        </label>
         <div className="input-container">
           <input
             className="register-input password-input"
@@ -498,7 +893,9 @@ export default function Register() {
           </button>
         </div>
 
-        <label className="register-label" htmlFor="confirmPassword">Confirm Password</label>
+        <label className="register-label" htmlFor="confirmPassword">
+          Confirm Password
+        </label>
         <div className="input-container">
           <input
             className="register-input password-input"
@@ -515,15 +912,21 @@ export default function Register() {
             {showConfirmPassword ? <FaEyeSlash /> : <FaEye />}
           </button>
         </div>
-        
+
         <button className="register-btn" type="submit" disabled={loading}>
           {loading ? <div className="spinner"></div> : "Sign Up"}
         </button>
-        
+
         <div className="login-link">
           Already have an account? <a href="/login">Login here</a>
         </div>
       </form>
+
+      <Camera
+        isOpen={showCamera}
+        onCapture={handleCameraCapture}
+        onClose={() => setShowCamera(false)}
+      />
     </div>
   );
 }
