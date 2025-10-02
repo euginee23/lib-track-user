@@ -33,6 +33,7 @@ export default function Register() {
   const [contactNumber, setContactNumber] = useState("");
   const [college, setCollege] = useState("");
   const [position, setPosition] = useState("");
+  const [yearLevel, setYearLevel] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [corImage, setCorImage] = useState(null);
@@ -75,11 +76,12 @@ export default function Register() {
     setStudentId(value);
   }
 
+  // Update the handleFacultyIdChange function to limit the faculty ID to 6 digits
   function handleFacultyIdChange(e) {
     let value = e.target.value.replace(/[^0-9]/g, "");
 
-    if (value.length > 10) {
-      value = value.slice(0, 10);
+    if (value.length > 6) {
+      value = value.slice(0, 6);
     }
 
     setFacultyId(value);
@@ -93,6 +95,11 @@ export default function Register() {
     }
 
     setContactNumber(value);
+  }
+
+  function handleCollegeChange(e) {
+    const selectedValue = e.target.value;
+    setCollege(selectedValue);
   }
 
   async function handleSubmit(e) {
@@ -111,6 +118,7 @@ export default function Register() {
 
     if (userType === "student") {
       if (!studentId) missingFields.push("Student ID");
+      if (!yearLevel) missingFields.push("Year Level");
       if (!corImage) missingFields.push("Photo of your COR");
       if (!profileImage) missingFields.push("Profile Picture");
     } else {
@@ -131,7 +139,7 @@ export default function Register() {
       return;
     }
 
-    // Set position based on userType
+    // POSITION BASED ON USER TYPE
     const finalPosition = userType === "student" ? "Student" : position;
 
     const user = {
@@ -147,6 +155,7 @@ export default function Register() {
       ...(userType === "student"
         ? {
             studentId,
+            yearLevel,
             corImage,
           }
         : {
@@ -617,6 +626,27 @@ export default function Register() {
               />
             </div>
 
+            <label className="register-label" htmlFor="yearLevel">
+              Year Level
+            </label>
+            <div className="input-container">
+              <select
+                className="select-input"
+                id="yearLevel"
+                value={yearLevel}
+                onChange={(e) => setYearLevel(e.target.value)}
+              >
+                <option value="">Select your year level</option>
+                <option value="1">First Year</option>
+                <option value="2">Second Year</option>
+                <option value="3">Third Year</option>
+                <option value="4">Fourth Year</option>
+                <option value="5">Fifth Year</option>
+                <option value="6">Sixth Year</option>
+                <option value="Graduate">Graduate Student</option>
+              </select>
+            </div>
+
             <label className="register-label">Profile Picture</label>
             <div className="input-container">
               <div
@@ -730,7 +760,7 @@ export default function Register() {
                 id="facultyId"
                 value={facultyId}
                 onChange={handleFacultyIdChange}
-                placeholder="1234567890"
+                placeholder="123456"
               />
             </div>
 
@@ -826,11 +856,11 @@ export default function Register() {
             className="select-input"
             id="college"
             value={college}
-            onChange={(e) => setCollege(e.target.value)}
+            onChange={handleCollegeChange}
           >
             <option value="">Select your college</option>
             {departments.map((dept) => (
-              <option key={dept.department_id} value={dept.department_acronym}>
+              <option key={dept.department_id} value={dept.department_id}>
                 {dept.department_acronym} - {dept.department_name}
               </option>
             ))}

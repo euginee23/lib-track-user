@@ -24,6 +24,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import LoginToKiosk from "./pages/LoginToKiosk";
+import ChatbotComponent from "./chatbot/ChatbotComponent.jsx";
 
 import authService from "./utils/auth";
 
@@ -503,6 +504,12 @@ function App() {
       
       {/* Add padding to prevent content from being hidden under the footer */}
       <div style={{ paddingBottom: '3rem' }}></div>
+      
+      {/* Show Chatbot only for authenticated users and exclude verification pages */}
+      {isAuthenticated &&
+        !["/", "/login", "/register", "/verify-email", "/librarian-approval", "/forgot-password"].includes(location.pathname) && (
+          <ChatbotComponent />
+        )}
     </>
   );
 }

@@ -14,6 +14,9 @@ export async function registerUser(user) {
   // Add student-specific fields
   if (user.studentId) {
     formData.append("studentId", user.studentId);
+    if (user.yearLevel) {
+      formData.append("yearLevel", user.yearLevel);
+    }
   }
   
   // Add faculty-specific fields
