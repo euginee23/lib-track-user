@@ -15,9 +15,7 @@ import Register from "./pages/Register";
 import VerifyEmail from "./pages/VerifyEmail";
 import LibrarianApproval from "./pages/LibrarianApproval";
 import Dashboard from "./pages/Dashboard";
-import Home from "./pages/Home";
-import SearchBooks from "./pages/SearchBooks";
-import MyBorrowed from "./pages/MyBorrowed";
+import BookReservation from "./pages/BookReservation";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -156,7 +154,7 @@ function App() {
         } else if (!isLibrarianApproved) {
           setShouldRender(<Navigate to="/librarian-approval" state={{ userEmail: user.email }} replace />);
         } else {
-          setShouldRender(<Navigate to="/home" replace />);
+          setShouldRender(<Navigate to="/dashboard" replace />);
         }
       };
 
@@ -209,7 +207,7 @@ function App() {
         const currentPath = location.pathname;
 
         if (isEmailVerified && isLibrarianApproved) {
-          setShouldRender(<Navigate to="/home" replace />);
+          setShouldRender(<Navigate to="/dashboard" replace />);
           return;
         }
 
@@ -217,7 +215,7 @@ function App() {
           if (!isLibrarianApproved) {
             setShouldRender(<Navigate to="/librarian-approval" state={{ userEmail: user.email }} replace />);
           } else {
-            setShouldRender(<Navigate to="/home" replace />);
+            setShouldRender(<Navigate to="/dashboard" replace />);
           }
           return;
         }
@@ -447,14 +445,6 @@ function App() {
             }
           />
           <Route
-            path="/home"
-            element={
-              <ProtectedRoute>
-                <Home />
-              </ProtectedRoute>
-            }
-          />
-          <Route
             path="/dashboard"
             element={
               <ProtectedRoute>
@@ -463,18 +453,10 @@ function App() {
             }
           />
           <Route
-            path="/search-books"
+            path="/book-reservation"
             element={
               <ProtectedRoute>
-                <SearchBooks />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/my-borrowed"
-            element={
-              <ProtectedRoute>
-                <MyBorrowed />
+                <BookReservation />
               </ProtectedRoute>
             }
           />

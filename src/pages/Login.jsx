@@ -39,7 +39,7 @@ export default function Login() {
       const response = await loginUser(email, password);
       
       ToastNotification.success(`Hello, ${response.user.firstName} ${response.user.lastName}`);
-      navigate("/home", { replace: true });
+      navigate("/", { replace: true });
       
     } catch (error) {
       if (error.result?.user && error.result?.token) {
@@ -52,7 +52,7 @@ export default function Login() {
         } else if (user.librarian_approval === 0) {
           navigate("/librarian-approval", { state: { userEmail: user.email }, replace: true });
         } else {
-          navigate("/home", { replace: true });
+          navigate("/", { replace: true });
         }
       } else {
         ToastNotification.error(error.message);

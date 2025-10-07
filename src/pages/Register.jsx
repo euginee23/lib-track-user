@@ -47,6 +47,19 @@ export default function Register() {
   const [departments, setDepartments] = useState([]);
   const navigate = useNavigate();
 
+  // Cleanup function to revoke object URLs and prevent memory leaks
+  useEffect(() => {
+    return () => {
+      // Cleanup image URLs when component unmounts
+      if (profileImagePreview && profileImagePreview.startsWith('blob:')) {
+        URL.revokeObjectURL(profileImagePreview);
+      }
+      if (corImagePreview && corImagePreview.startsWith('blob:')) {
+        URL.revokeObjectURL(corImagePreview);
+      }
+    };
+  }, [profileImagePreview, corImagePreview]);
+
   const facultyPositions = ["Regular", "Visiting Lecturer"];
 
   useEffect(() => {
@@ -76,7 +89,6 @@ export default function Register() {
     setStudentId(value);
   }
 
-  // Update the handleFacultyIdChange function to limit the faculty ID to 6 digits
   function handleFacultyIdChange(e) {
     let value = e.target.value.replace(/[^0-9]/g, "");
 
@@ -201,21 +213,155 @@ export default function Register() {
   function handleImageChange(e, imageType) {
     const file = e.target.files[0];
     if (file) {
-      if (imageType === "cor") {
-        setCorImage(file);
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          setCorImagePreview(e.target.result);
-        };
-        reader.readAsDataURL(file);
-      } else if (imageType === "profile") {
-        setProfileImage(file);
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          setProfileImagePreview(e.target.result);
-        };
-        reader.readAsDataURL(file);
+      // Check if file type is supported
+      const supportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+      
+      // Convert HEIC to JPEG if needed (for iOS devices)
+      if (file.type === 'image/heic' || file.type === 'image/heif' || file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif')) {
+        // For HEIC files, we'll convert them to JPEG
+        convertHeicToJpeg(file, imageType);
+        return;
       }
+      
+      if (!supportedTypes.includes(file.type)) {
+        ToastNotification.error('Please select a valid image file (JPEG, PNG, or WebP)');
+        return;
+      }
+
+      // Check file size (5MB limit)
+      if (file.size > 5 * 1024 * 1024) {
+        ToastNotification.error('File size must be less than 5MB');
+        return;
+      }
+
+      processImageFile(file, imageType);
+    }
+  }
+
+  function convertHeicToJpeg(file, imageType) {
+    // Try to process HEIC file directly first
+    const directReader = new FileReader();
+    
+    directReader.onload = function(e) {
+      try {
+        // If we can read it directly, use it
+        if (imageType === "cor") {
+          setCorImage(file);
+          setCorImagePreview(e.target.result);
+        } else if (imageType === "profile") {
+          setProfileImage(file);
+          setProfileImagePreview(e.target.result);
+        }
+      } catch (error) {
+        // If direct reading fails, try canvas conversion
+        attemptCanvasConversion(file, imageType);
+      }
+    };
+    
+    directReader.onerror = function() {
+      // If direct reading fails, try canvas conversion
+      attemptCanvasConversion(file, imageType);
+    };
+    
+    try {
+      directReader.readAsDataURL(file);
+    } catch (error) {
+      attemptCanvasConversion(file, imageType);
+    }
+  }
+
+  function attemptCanvasConversion(file, imageType) {
+    // Create a canvas to convert HEIC to JPEG
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    
+    img.onload = function() {
+      try {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        
+        canvas.toBlob((blob) => {
+          if (blob) {
+            // Create a new File object from the blob
+            const convertedFile = new File([blob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), {
+              type: 'image/jpeg',
+              lastModified: Date.now()
+            });
+            processImageFile(convertedFile, imageType);
+          } else {
+            ToastNotification.error('Failed to convert HEIC image. Please try selecting the image from your photo library instead of camera, or convert it to JPEG first.');
+          }
+        }, 'image/jpeg', 0.8);
+      } catch (error) {
+        console.error('Canvas conversion error:', error);
+        ToastNotification.error('Failed to convert HEIC image. Please convert it to JPEG first or try a different image.');
+      }
+    };
+    
+    img.onerror = function() {
+      ToastNotification.error('HEIC format is not supported on this device. Please convert the image to JPEG or PNG first.');
+    };
+    
+    try {
+      // Create object URL for HEIC file
+      const objectUrl = URL.createObjectURL(file);
+      img.src = objectUrl;
+      
+      // Clean up object URL after a delay
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (error) {
+      console.error('Error creating object URL:', error);
+      ToastNotification.error('Failed to process HEIC image. Please convert it to JPEG or PNG first.');
+    }
+  }
+
+  function processImageFile(file, imageType) {
+    const reader = new FileReader();
+    
+    reader.onload = function(e) {
+      try {
+        const result = e.target.result;
+        if (imageType === "cor") {
+          setCorImage(file);
+          setCorImagePreview(result);
+        } else if (imageType === "profile") {
+          setProfileImage(file);
+          setProfileImagePreview(result);
+        }
+      } catch (error) {
+        console.error('Error processing image:', error);
+        ToastNotification.error('Failed to process image. Please try a different image.');
+      }
+    };
+    
+    reader.onerror = function(error) {
+      console.error('FileReader error:', error);
+      ToastNotification.error('Failed to read image file. Please try again or use a different image.');
+    };
+    
+    reader.onabort = function() {
+      console.warn('FileReader aborted');
+      ToastNotification.error('Image loading was cancelled. Please try again.');
+    };
+    
+    // Add timeout for FileReader
+    const timeout = setTimeout(() => {
+      reader.abort();
+      ToastNotification.error('Image loading timed out. Please try a smaller image.');
+    }, 10000); // 10 second timeout
+    
+    reader.addEventListener('loadend', () => {
+      clearTimeout(timeout);
+    });
+    
+    try {
+      reader.readAsDataURL(file);
+    } catch (error) {
+      clearTimeout(timeout);
+      console.error('Error starting FileReader:', error);
+      ToastNotification.error('Failed to start reading image file. Please try again.');
     }
   }
 
@@ -226,7 +372,7 @@ export default function Register() {
 
   function handleRemoveProfileImage() {
     // Clean up the existing image URL to prevent memory leaks
-    if (profileImagePreview) {
+    if (profileImagePreview && profileImagePreview.startsWith('blob:')) {
       URL.revokeObjectURL(profileImagePreview);
     }
     setProfileImage(null);
@@ -328,6 +474,9 @@ export default function Register() {
         .image-upload-input {
           position: absolute;
           left: -9999px;
+          width: 1px;
+          height: 1px;
+          opacity: 0;
         }
         .image-preview {
           max-width: 100%;
@@ -491,9 +640,11 @@ export default function Register() {
             font-size: 0.85rem;
             margin-bottom: 1.25rem;
           }
-          .register-input {
+          .register-input, .select-input {
             padding: 0.5rem 0.7rem;
             font-size: 16px; /* Prevents zoom on iOS */
+            -webkit-appearance: none;
+            appearance: none;
           }
           .password-input {
             padding-right: 2.3rem;
@@ -501,6 +652,21 @@ export default function Register() {
           .password-toggle {
             right: 0.7rem;
             font-size: 1.1rem;
+          }
+          .image-upload-container {
+            min-height: 150px;
+            padding: 0.75rem;
+          }
+          .image-preview {
+            max-height: 150px;
+          }
+          .upload-options {
+            flex-direction: column;
+            gap: 0.25rem;
+          }
+          .camera-btn, .upload-btn {
+            font-size: 0.8rem;
+            padding: 0.6rem;
           }
         }
         @media (max-height: 600px) {
@@ -658,7 +824,8 @@ export default function Register() {
                   type="file"
                   id="profileImageStudent"
                   className="image-upload-input"
-                  accept="image/*"
+                  accept="image/*,.heic,.heif"
+                  capture="user"
                   onChange={(e) => handleImageChange(e, "profile")}
                 />
                 {profileImagePreview ? (
@@ -722,7 +889,7 @@ export default function Register() {
                   type="file"
                   id="corImage"
                   className="image-upload-input"
-                  accept="image/*"
+                  accept="image/*,.heic,.heif"
                   onChange={(e) => handleImageChange(e, "cor")}
                 />
                 {corImagePreview ? (
@@ -794,7 +961,8 @@ export default function Register() {
                   type="file"
                   id="profileImageFaculty"
                   className="image-upload-input"
-                  accept="image/*"
+                  accept="image/*,.heic,.heif"
+                  capture="user"
                   onChange={(e) => handleImageChange(e, "profile")}
                 />
                 {profileImagePreview ? (
