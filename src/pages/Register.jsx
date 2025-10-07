@@ -213,14 +213,150 @@ export default function Register() {
   function handleImageChange(e, imageType) {
     const file = e.target.files[0];
     if (file) {
-      // Check file size (5MB limit)
-      if (file.size > 5 * 1024 * 1024) {
-        ToastNotification.error('File size must be less than 5MB');
+      // Check file size (10MB limit - increased for mobile photos)
+      if (file.size > 10 * 1024 * 1024) {
+        ToastNotification.error('File size must be less than 10MB');
         return;
       }
 
-      // Always convert to JPEG for better mobile compatibility
-      convertToJpeg(file, imageType);
+      // Check if it's a supported image type
+      const supportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/bmp'];
+      const isHeicOrHeif = file.type === 'image/heic' || file.type === 'image/heif' || 
+                           file.name.toLowerCase().endsWith('.heic') || 
+                           file.name.toLowerCase().endsWith('.heif');
+
+      if (!supportedTypes.includes(file.type) && !isHeicOrHeif) {
+        ToastNotification.error('Please select a valid image file (JPEG, PNG, WEBP, HEIC, HEIF)');
+        return;
+      }
+
+      // For HEIC/HEIF files or mobile uploads, use fallback method
+      if (isHeicOrHeif || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        handleMobileImageUpload(file, imageType);
+      } else {
+        // Standard image processing for desktop
+        convertToJpeg(file, imageType);
+      }
+    }
+  }
+
+  function handleMobileImageUpload(file, imageType) {
+    // Create a more robust file reader for mobile devices
+    const reader = new FileReader();
+    
+    reader.onload = function(e) {
+      try {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        
+        img.onload = function() {
+          try {
+            // Create canvas for image processing
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Calculate optimal dimensions (max 1920x1920 for mobile)
+            let { width, height } = img;
+            const maxSize = 1920;
+            
+            if (width > maxSize || height > maxSize) {
+              if (width > height) {
+                height = (height * maxSize) / width;
+                width = maxSize;
+              } else {
+                width = (width * maxSize) / height;
+                height = maxSize;
+              }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            
+            // Draw and convert to JPEG
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(0, 0, width, height);
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            canvas.toBlob((blob) => {
+              if (blob) {
+                const fileName = file.name.replace(/\.(heic|heif|png|webp|gif|bmp)$/i, '.jpg');
+                const convertedFile = new File([blob], fileName, {
+                  type: 'image/jpeg',
+                  lastModified: Date.now()
+                });
+                
+                // Create preview URL
+                const previewUrl = URL.createObjectURL(blob);
+                
+                if (imageType === "cor") {
+                  // Clean up previous image
+                  if (corImagePreview && corImagePreview.startsWith('blob:')) {
+                    URL.revokeObjectURL(corImagePreview);
+                  }
+                  setCorImage(convertedFile);
+                  setCorImagePreview(previewUrl);
+                } else if (imageType === "profile") {
+                  // Clean up previous image
+                  if (profileImagePreview && profileImagePreview.startsWith('blob:')) {
+                    URL.revokeObjectURL(profileImagePreview);
+                  }
+                  setProfileImage(convertedFile);
+                  setProfileImagePreview(previewUrl);
+                }
+              } else {
+                ToastNotification.error('Failed to process image. Please try again.');
+              }
+            }, 'image/jpeg', 0.8);
+            
+          } catch (canvasError) {
+            console.error('Canvas processing error:', canvasError);
+            // Fallback: use original file
+            useOriginalFile(file, imageType);
+          }
+        };
+        
+        img.onerror = function() {
+          console.error('Image load error');
+          // Fallback: use original file
+          useOriginalFile(file, imageType);
+        };
+        
+        img.src = e.target.result;
+        
+      } catch (error) {
+        console.error('Image processing error:', error);
+        useOriginalFile(file, imageType);
+      }
+    };
+    
+    reader.onerror = function() {
+      ToastNotification.error('Failed to read the image file. Please try a different image.');
+    };
+    
+    reader.readAsDataURL(file);
+  }
+
+  function useOriginalFile(file, imageType) {
+    // Last resort: use the original file as-is
+    try {
+      const previewUrl = URL.createObjectURL(file);
+      
+      if (imageType === "cor") {
+        if (corImagePreview && corImagePreview.startsWith('blob:')) {
+          URL.revokeObjectURL(corImagePreview);
+        }
+        setCorImage(file);
+        setCorImagePreview(previewUrl);
+      } else if (imageType === "profile") {
+        if (profileImagePreview && profileImagePreview.startsWith('blob:')) {
+          URL.revokeObjectURL(profileImagePreview);
+        }
+        setProfileImage(file);
+        setProfileImagePreview(previewUrl);
+      }
+    } catch (error) {
+      console.error('Fallback file processing error:', error);
+      ToastNotification.error('Unable to process this image. Please try a different image.');
     }
   }
 
@@ -231,47 +367,65 @@ export default function Register() {
     
     img.onload = function() {
       try {
-        // Set canvas dimensions
-        canvas.width = img.width;
-        canvas.height = img.height;
+        // Calculate optimal dimensions
+        let { width, height } = img;
+        const maxSize = 1920;
         
-        // Draw image on canvas
-        ctx.drawImage(img, 0, 0);
+        if (width > maxSize || height > maxSize) {
+          if (width > height) {
+            height = (height * maxSize) / width;
+            width = maxSize;
+          } else {
+            width = (width * maxSize) / height;
+            height = maxSize;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        // White background for better compatibility
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
         
         // Convert to JPEG blob
         canvas.toBlob((blob) => {
           if (blob) {
-            // Create new File object with JPEG format
             const fileName = file.name.replace(/\.(heic|heif|png|webp|gif|bmp)$/i, '.jpg');
             const convertedFile = new File([blob], fileName, {
               type: 'image/jpeg',
               lastModified: Date.now()
             });
             
-            // Set the converted file and preview
-            const reader = new FileReader();
-            reader.onload = function(e) {
-              if (imageType === "cor") {
-                setCorImage(convertedFile);
-                setCorImagePreview(e.target.result);
-              } else if (imageType === "profile") {
-                setProfileImage(convertedFile);
-                setProfileImagePreview(e.target.result);
+            const previewUrl = URL.createObjectURL(blob);
+            
+            if (imageType === "cor") {
+              if (corImagePreview && corImagePreview.startsWith('blob:')) {
+                URL.revokeObjectURL(corImagePreview);
               }
-            };
-            reader.readAsDataURL(convertedFile);
+              setCorImage(convertedFile);
+              setCorImagePreview(previewUrl);
+            } else if (imageType === "profile") {
+              if (profileImagePreview && profileImagePreview.startsWith('blob:')) {
+                URL.revokeObjectURL(profileImagePreview);
+              }
+              setProfileImage(convertedFile);
+              setProfileImagePreview(previewUrl);
+            }
           } else {
             ToastNotification.error('Failed to convert image. Please try a different image.');
           }
-        }, 'image/jpeg', 0.85);
+        }, 'image/jpeg', 0.8);
       } catch (error) {
         console.error('Canvas conversion error:', error);
-        ToastNotification.error('Failed to process image. Please try a different image.');
+        useOriginalFile(file, imageType);
       }
     };
     
     img.onerror = function() {
-      ToastNotification.error('Failed to load image. Please try a different image.');
+      console.error('Image load failed, using original file');
+      useOriginalFile(file, imageType);
     };
     
     // Create object URL for the file
@@ -743,7 +897,7 @@ export default function Register() {
                   type="file"
                   id="profileImageStudent"
                   className="image-upload-input"
-                  accept="image/*,.heic,.heif"
+                  accept="image/jpeg,image/jpg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif"
                   capture="user"
                   onChange={(e) => handleImageChange(e, "profile")}
                 />
@@ -761,7 +915,7 @@ export default function Register() {
                     <div className="upload-text">
                       <FaCamera /> Add your profile picture
                     </div>
-                    <div className="upload-hint">PNG, JPG, JPEG up to 10MB</div>
+                    <div className="upload-hint">PNG, JPG, JPEG, HEIC, HEIF up to 10MB</div>
                   </div>
                 )}
               </div>
@@ -808,7 +962,7 @@ export default function Register() {
                   type="file"
                   id="corImage"
                   className="image-upload-input"
-                  accept="image/*,.heic,.heif"
+                  accept="image/jpeg,image/jpg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif"
                   onChange={(e) => handleImageChange(e, "cor")}
                 />
                 {corImagePreview ? (
@@ -825,7 +979,7 @@ export default function Register() {
                     <div className="upload-text">
                       <FaFileImage /> Click to upload your COR
                     </div>
-                    <div className="upload-hint">PNG, JPG, JPEG up to 10MB</div>
+                    <div className="upload-hint">PNG, JPG, JPEG, HEIC, HEIF up to 10MB</div>
                   </div>
                 )}
               </div>
@@ -880,7 +1034,7 @@ export default function Register() {
                   type="file"
                   id="profileImageFaculty"
                   className="image-upload-input"
-                  accept="image/*,.heic,.heif"
+                  accept="image/jpeg,image/jpg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif"
                   capture="user"
                   onChange={(e) => handleImageChange(e, "profile")}
                 />
@@ -898,7 +1052,7 @@ export default function Register() {
                     <div className="upload-text">
                       <FaCamera /> Add your profile picture
                     </div>
-                    <div className="upload-hint">PNG, JPG, JPEG up to 10MB</div>
+                    <div className="upload-hint">PNG, JPG, JPEG, HEIC, HEIF up to 10MB</div>
                   </div>
                 )}
               </div>
