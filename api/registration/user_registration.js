@@ -35,7 +35,13 @@ export async function registerUser(user) {
 
   const response = await fetch(`${API_URL}/api/users/register`, {
     method: "POST",
+    headers: {
+      'Accept': 'application/json',
+    },
     body: formData,
+    mode: 'cors',
+    credentials: 'omit',
+    cache: 'no-cache',
   });
 
   if (!response.ok) {
