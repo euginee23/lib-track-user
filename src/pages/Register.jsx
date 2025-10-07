@@ -213,157 +213,76 @@ export default function Register() {
   function handleImageChange(e, imageType) {
     const file = e.target.files[0];
     if (file) {
-      // Check if file type is supported
-      const supportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-      
-      // Convert HEIC to JPEG if needed (for iOS devices)
-      if (file.type === 'image/heic' || file.type === 'image/heif' || file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif')) {
-        // For HEIC files, we'll convert them to JPEG
-        convertHeicToJpeg(file, imageType);
-        return;
-      }
-      
-      if (!supportedTypes.includes(file.type)) {
-        ToastNotification.error('Please select a valid image file (JPEG, PNG, or WebP)');
-        return;
-      }
-
       // Check file size (5MB limit)
       if (file.size > 5 * 1024 * 1024) {
         ToastNotification.error('File size must be less than 5MB');
         return;
       }
 
-      processImageFile(file, imageType);
+      // Always convert to JPEG for better mobile compatibility
+      convertToJpeg(file, imageType);
     }
   }
 
-  function convertHeicToJpeg(file, imageType) {
-    // Try to process HEIC file directly first
-    const directReader = new FileReader();
-    
-    directReader.onload = function(e) {
-      try {
-        // If we can read it directly, use it
-        if (imageType === "cor") {
-          setCorImage(file);
-          setCorImagePreview(e.target.result);
-        } else if (imageType === "profile") {
-          setProfileImage(file);
-          setProfileImagePreview(e.target.result);
-        }
-      } catch (error) {
-        // If direct reading fails, try canvas conversion
-        attemptCanvasConversion(file, imageType);
-      }
-    };
-    
-    directReader.onerror = function() {
-      // If direct reading fails, try canvas conversion
-      attemptCanvasConversion(file, imageType);
-    };
-    
-    try {
-      directReader.readAsDataURL(file);
-    } catch (error) {
-      attemptCanvasConversion(file, imageType);
-    }
-  }
-
-  function attemptCanvasConversion(file, imageType) {
-    // Create a canvas to convert HEIC to JPEG
+  function convertToJpeg(file, imageType) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     const img = new Image();
     
     img.onload = function() {
       try {
+        // Set canvas dimensions
         canvas.width = img.width;
         canvas.height = img.height;
+        
+        // Draw image on canvas
         ctx.drawImage(img, 0, 0);
         
+        // Convert to JPEG blob
         canvas.toBlob((blob) => {
           if (blob) {
-            // Create a new File object from the blob
-            const convertedFile = new File([blob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), {
+            // Create new File object with JPEG format
+            const fileName = file.name.replace(/\.(heic|heif|png|webp|gif|bmp)$/i, '.jpg');
+            const convertedFile = new File([blob], fileName, {
               type: 'image/jpeg',
               lastModified: Date.now()
             });
-            processImageFile(convertedFile, imageType);
+            
+            // Set the converted file and preview
+            const reader = new FileReader();
+            reader.onload = function(e) {
+              if (imageType === "cor") {
+                setCorImage(convertedFile);
+                setCorImagePreview(e.target.result);
+              } else if (imageType === "profile") {
+                setProfileImage(convertedFile);
+                setProfileImagePreview(e.target.result);
+              }
+            };
+            reader.readAsDataURL(convertedFile);
           } else {
-            ToastNotification.error('Failed to convert HEIC image. Please try selecting the image from your photo library instead of camera, or convert it to JPEG first.');
+            ToastNotification.error('Failed to convert image. Please try a different image.');
           }
-        }, 'image/jpeg', 0.8);
+        }, 'image/jpeg', 0.85);
       } catch (error) {
         console.error('Canvas conversion error:', error);
-        ToastNotification.error('Failed to convert HEIC image. Please convert it to JPEG first or try a different image.');
-      }
-    };
-    
-    img.onerror = function() {
-      ToastNotification.error('HEIC format is not supported on this device. Please convert the image to JPEG or PNG first.');
-    };
-    
-    try {
-      // Create object URL for HEIC file
-      const objectUrl = URL.createObjectURL(file);
-      img.src = objectUrl;
-      
-      // Clean up object URL after a delay
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-    } catch (error) {
-      console.error('Error creating object URL:', error);
-      ToastNotification.error('Failed to process HEIC image. Please convert it to JPEG or PNG first.');
-    }
-  }
-
-  function processImageFile(file, imageType) {
-    const reader = new FileReader();
-    
-    reader.onload = function(e) {
-      try {
-        const result = e.target.result;
-        if (imageType === "cor") {
-          setCorImage(file);
-          setCorImagePreview(result);
-        } else if (imageType === "profile") {
-          setProfileImage(file);
-          setProfileImagePreview(result);
-        }
-      } catch (error) {
-        console.error('Error processing image:', error);
         ToastNotification.error('Failed to process image. Please try a different image.');
       }
     };
     
-    reader.onerror = function(error) {
-      console.error('FileReader error:', error);
-      ToastNotification.error('Failed to read image file. Please try again or use a different image.');
+    img.onerror = function() {
+      ToastNotification.error('Failed to load image. Please try a different image.');
     };
     
-    reader.onabort = function() {
-      console.warn('FileReader aborted');
-      ToastNotification.error('Image loading was cancelled. Please try again.');
-    };
+    // Create object URL for the file
+    const objectUrl = URL.createObjectURL(file);
+    img.src = objectUrl;
     
-    // Add timeout for FileReader
-    const timeout = setTimeout(() => {
-      reader.abort();
-      ToastNotification.error('Image loading timed out. Please try a smaller image.');
-    }, 10000); // 10 second timeout
-    
-    reader.addEventListener('loadend', () => {
-      clearTimeout(timeout);
-    });
-    
-    try {
-      reader.readAsDataURL(file);
-    } catch (error) {
-      clearTimeout(timeout);
-      console.error('Error starting FileReader:', error);
-      ToastNotification.error('Failed to start reading image file. Please try again.');
-    }
+    // Clean up object URL after a delay
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
   }
+
+
 
   function handleCameraCapture(file, imageUrl) {
     setProfileImage(file);
