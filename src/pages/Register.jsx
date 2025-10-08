@@ -227,67 +227,52 @@ export default function Register() {
         imageType: imageType
       });
 
-      // Check file size (10MB limit - increased for mobile photos)
-      if (file.size > 10 * 1024 * 1024) {
+      // Check file size (15MB limit - increased for mobile photos)
+      if (file.size > 15 * 1024 * 1024) {
         console.error('❌ File too large:', file.size);
-        ToastNotification.error('File size must be less than 10MB');
+        ToastNotification.error('File size must be less than 15MB');
         return;
       }
 
-      // Enhanced image type detection
-      const fileName = file.name.toLowerCase();
-      const fileType = file.type.toLowerCase();
+      // Enhanced image type detection with more flexibility for mobile
+      const fileName = file.name ? file.name.toLowerCase() : '';
+      const fileType = file.type ? file.type.toLowerCase() : '';
       
       console.log('🔍 File analysis:', {
         fileName: fileName,
         fileType: fileType,
-        hasType: !!file.type
+        hasType: !!file.type,
+        hasName: !!file.name
       });
       
-      // Support more image formats and extensions
-      const supportedMimeTypes = [
-        'image/jpeg', 'image/jpg', 'image/png', 'image/webp', 
-        'image/gif', 'image/bmp', 'image/tiff', 'image/svg+xml'
-      ];
-      
-      const supportedExtensions = [
-        '.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', 
-        '.heic', '.heif', '.tiff', '.tif', '.svg'
-      ];
-      
-      // Check if it's HEIC/HEIF (special handling needed)
-      const isHeicOrHeif = fileType.includes('heic') || fileType.includes('heif') || 
-                           fileName.endsWith('.heic') || fileName.endsWith('.heif');
-      
-      // Check if file extension is supported
-      const hasValidExtension = supportedExtensions.some(ext => fileName.endsWith(ext));
-      
-      // Check if MIME type is supported or if it's a special case
-      const hasValidMimeType = supportedMimeTypes.includes(fileType);
-      
-      // Allow files with no MIME type but valid extension (common on mobile)
-      const isValidFile = hasValidMimeType || hasValidExtension || isHeicOrHeif || !fileType;
+      // More permissive validation - many mobile files don't have proper MIME types
+      const isImageFile = 
+        // Has image MIME type
+        fileType.startsWith('image/') ||
+        // Has image extension
+        /\.(jpe?g|png|webp|gif|bmp|tiff?|heic|heif|avif)$/i.test(fileName) ||
+        // Mobile often sends files without extensions or MIME types
+        (!fileType && !fileName) ||
+        // Some mobile browsers send generic types
+        fileType === 'application/octet-stream';
 
       console.log('✅ File validation:', {
-        isHeicOrHeif: isHeicOrHeif,
-        hasValidExtension: hasValidExtension,
-        hasValidMimeType: hasValidMimeType,
-        isValidFile: isValidFile
+        isImageFile: isImageFile,
+        fileType: fileType,
+        fileName: fileName
       });
 
-      if (!isValidFile) {
+      if (!isImageFile && fileName && fileType) {
         console.error('❌ Invalid file type:', {
           fileName: fileName,
-          fileType: fileType,
-          supportedMimeTypes: supportedMimeTypes,
-          supportedExtensions: supportedExtensions
+          fileType: fileType
         });
-        ToastNotification.error('Please select a valid image file (JPEG, PNG, WEBP, HEIC, HEIF, etc.)');
+        ToastNotification.error('Please select a valid image file');
         return;
       }
 
       console.log('🚀 Starting image processing...');
-      // Use enhanced processing for all uploads to ensure compatibility
+      // Always process the image to ensure compatibility
       processImageFile(file, imageType);
     } else {
       console.log('❌ No file selected');
@@ -306,17 +291,33 @@ export default function Register() {
       timestamp: new Date().toISOString()
     });
 
-    // Always use the robust image processing method
+    // For very small files or files without proper type, try direct usage first
+    if (file.size < 100 * 1024 && (!file.type || file.type === 'application/octet-stream')) {
+      console.log('🔄 Small/unknown file type, attempting direct usage...');
+      useOriginalFile(file, imageType);
+      return;
+    }
+
     const reader = new FileReader();
     
     reader.onload = function(e) {
       console.log('📖 FileReader onload triggered, result length:', e.target.result?.length);
       
+      // Add timeout for image loading on mobile
+      let timeoutId;
+      
       try {
         const img = new Image();
         img.crossOrigin = 'anonymous';
         
+        // Set a timeout for image loading (especially important for mobile)
+        timeoutId = setTimeout(() => {
+          console.log('⏰ Image loading timeout, falling back to original file');
+          useOriginalFile(file, imageType);
+        }, 10000); // 10 second timeout
+        
         img.onload = function() {
+          clearTimeout(timeoutId);
           console.log('🖼️ Image loaded successfully:', {
             width: img.width,
             height: img.height,
@@ -324,10 +325,20 @@ export default function Register() {
             naturalHeight: img.naturalHeight
           });
           
+          // Validate image dimensions
+          if (img.width === 0 || img.height === 0) {
+            console.error('❌ Invalid image dimensions');
+            useOriginalFile(file, imageType);
+            return;
+          }
+          
           try {
             // Create canvas for image processing
             const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
+            const ctx = canvas.getContext('2d', { 
+              alpha: false,
+              desynchronized: true 
+            });
             
             if (!ctx) {
               console.error('❌ Failed to get canvas context');
@@ -335,84 +346,105 @@ export default function Register() {
               return;
             }
             
-            // Calculate optimal dimensions (max 1920x1920)
+            // Calculate optimal dimensions (max 1920x1920, but respect mobile limitations)
             let { width, height } = img;
             const maxSize = 1920;
             const originalDimensions = { width, height };
             
-            if (width > maxSize || height > maxSize) {
+            // For mobile, use smaller max size to prevent memory issues
+            const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            const actualMaxSize = isMobile ? Math.min(maxSize, 1200) : maxSize;
+            
+            if (width > actualMaxSize || height > actualMaxSize) {
               if (width > height) {
-                height = (height * maxSize) / width;
-                width = maxSize;
+                height = (height * actualMaxSize) / width;
+                width = actualMaxSize;
               } else {
-                width = (width * maxSize) / height;
-                height = maxSize;
+                width = (width * actualMaxSize) / height;
+                height = actualMaxSize;
               }
             }
             
             console.log('📐 Canvas dimensions:', {
               original: originalDimensions,
-              resized: { width, height }
+              resized: { width, height },
+              isMobile: isMobile,
+              maxSize: actualMaxSize
             });
             
-            canvas.width = width;
-            canvas.height = height;
+            canvas.width = Math.round(width);
+            canvas.height = Math.round(height);
             
             // Fill with white background for better JPEG conversion
             ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, width, height);
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
             
-            // Draw image
-            ctx.drawImage(img, 0, 0, width, height);
+            // Draw image with error handling
+            try {
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              console.log('🎨 Image drawn to canvas successfully');
+            } catch (drawError) {
+              console.error('❌ Canvas draw error:', drawError);
+              useOriginalFile(file, imageType);
+              return;
+            }
             
-            console.log('🎨 Image drawn to canvas, attempting to convert to blob...');
+            console.log('🔄 Converting canvas to blob...');
             
-            // Convert to JPEG blob with high quality
-            canvas.toBlob((blob) => {
-              if (blob) {
-                console.log('✅ Blob created successfully:', {
-                  size: blob.size,
-                  type: blob.type
-                });
-                
-                // Create a proper filename
-                const originalName = file.name || 'image';
-                const fileName = originalName.replace(/\.(heic|heif|png|webp|gif|bmp|tiff|tif|svg)$/i, '.jpg');
-                
-                const convertedFile = new File([blob], fileName, {
-                  type: 'image/jpeg',
-                  lastModified: Date.now()
-                });
-                
-                // Create preview URL
-                const previewUrl = URL.createObjectURL(blob);
-                
-                console.log('🔗 Preview URL created:', previewUrl);
-                
-                // Set the image based on type
-                if (imageType === "cor") {
-                  // Clean up previous image
-                  if (corImagePreview && corImagePreview.startsWith('blob:')) {
-                    URL.revokeObjectURL(corImagePreview);
+            // Convert to JPEG blob with quality based on file size
+            const quality = file.size > 2 * 1024 * 1024 ? 0.75 : 0.85; // Lower quality for larger files
+            
+            try {
+              canvas.toBlob((blob) => {
+                if (blob && blob.size > 0) {
+                  console.log('✅ Blob created successfully:', {
+                    size: blob.size,
+                    type: blob.type,
+                    originalSize: file.size,
+                    compressionRatio: (file.size / blob.size).toFixed(2)
+                  });
+                  
+                  // Create a proper filename
+                  const originalName = file.name || `image_${Date.now()}`;
+                  const fileName = originalName.replace(/\.[^.]*$/, '.jpg');
+                  
+                  const convertedFile = new File([blob], fileName, {
+                    type: 'image/jpeg',
+                    lastModified: Date.now()
+                  });
+                  
+                  // Create preview URL
+                  const previewUrl = URL.createObjectURL(blob);
+                  
+                  console.log('🔗 Preview URL created:', previewUrl);
+                  
+                  // Set the image based on type
+                  if (imageType === "cor") {
+                    // Clean up previous image
+                    if (corImagePreview && corImagePreview.startsWith('blob:')) {
+                      URL.revokeObjectURL(corImagePreview);
+                    }
+                    setCorImage(convertedFile);
+                    setCorImagePreview(previewUrl);
+                    console.log('✅ COR image set successfully');
+                  } else if (imageType === "profile") {
+                    // Clean up previous image
+                    if (profileImagePreview && profileImagePreview.startsWith('blob:')) {
+                      URL.revokeObjectURL(profileImagePreview);
+                    }
+                    setProfileImage(convertedFile);
+                    setProfileImagePreview(previewUrl);
+                    console.log('✅ Profile image set successfully');
                   }
-                  setCorImage(convertedFile);
-                  setCorImagePreview(previewUrl);
-                  console.log('✅ COR image set successfully');
-                } else if (imageType === "profile") {
-                  // Clean up previous image
-                  if (profileImagePreview && profileImagePreview.startsWith('blob:')) {
-                    URL.revokeObjectURL(profileImagePreview);
-                  }
-                  setProfileImage(convertedFile);
-                  setProfileImagePreview(previewUrl);
-                  console.log('✅ Profile image set successfully');
+                } else {
+                  console.error('❌ Failed to create blob from canvas or blob is empty');
+                  useOriginalFile(file, imageType);
                 }
-              } else {
-                console.error('❌ Failed to create blob from canvas');
-                ToastNotification.error('Failed to process image. Please try again.');
-                useOriginalFile(file, imageType);
-              }
-            }, 'image/jpeg', 0.85);
+              }, 'image/jpeg', quality);
+            } catch (blobError) {
+              console.error('❌ toBlob error:', blobError);
+              useOriginalFile(file, imageType);
+            }
             
           } catch (canvasError) {
             console.error('❌ Canvas processing error:', {
@@ -420,27 +452,33 @@ export default function Register() {
               message: canvasError.message,
               stack: canvasError.stack
             });
-            // Fallback: use original file
             useOriginalFile(file, imageType);
           }
         };
         
         img.onerror = function(imgError) {
+          clearTimeout(timeoutId);
           console.error('❌ Image load error:', {
             error: imgError,
             src: img.src?.substring(0, 100) + '...',
             fileType: file.type,
             fileName: file.name
           });
-          // Fallback: use original file
           useOriginalFile(file, imageType);
         };
         
-        // Set image source
-        img.src = e.target.result;
-        console.log('🔗 Image src set, waiting for load...');
+        // Set image source with error handling
+        try {
+          img.src = e.target.result;
+          console.log('🔗 Image src set, waiting for load...');
+        } catch (srcError) {
+          clearTimeout(timeoutId);
+          console.error('❌ Error setting image src:', srcError);
+          useOriginalFile(file, imageType);
+        }
         
       } catch (error) {
+        if (timeoutId) clearTimeout(timeoutId);
         console.error('❌ Image processing error:', {
           error: error,
           message: error.message,
@@ -455,16 +493,32 @@ export default function Register() {
     reader.onerror = function(readerError) {
       console.error('❌ FileReader error:', {
         error: readerError,
+        errorCode: readerError.target?.error?.code,
+        errorName: readerError.target?.error?.name,
         fileType: file.type,
         fileName: file.name,
         fileSize: file.size
       });
-      ToastNotification.error('Failed to read the image file. Please try a different image.');
+      
+      // Try using the original file as a last resort
+      console.log('🔄 FileReader failed, attempting to use original file...');
+      useOriginalFile(file, imageType);
+    };
+    
+    reader.onabort = function() {
+      console.log('❌ FileReader aborted');
+      useOriginalFile(file, imageType);
     };
     
     console.log('📖 Starting FileReader...');
-    // Read file as data URL
-    reader.readAsDataURL(file);
+    
+    try {
+      // Read file as data URL
+      reader.readAsDataURL(file);
+    } catch (readerStartError) {
+      console.error('❌ Error starting FileReader:', readerStartError);
+      useOriginalFile(file, imageType);
+    }
   }
 
 
@@ -479,24 +533,55 @@ export default function Register() {
     });
     
     try {
-      const previewUrl = URL.createObjectURL(file);
-      console.log('🔗 Original file preview URL created:', previewUrl);
+      // Validate file size again for original files
+      if (file.size > 15 * 1024 * 1024) {
+        console.error('❌ Original file too large:', file.size);
+        ToastNotification.error('File size must be less than 15MB');
+        return;
+      }
+      
+      // Create preview URL with error handling
+      let previewUrl;
+      try {
+        previewUrl = URL.createObjectURL(file);
+        console.log('🔗 Original file preview URL created:', previewUrl);
+      } catch (urlError) {
+        console.error('❌ Failed to create preview URL:', urlError);
+        // Still try to set the file even without preview
+        previewUrl = null;
+      }
+      
+      // Create a standardized filename for consistency
+      const timestamp = Date.now();
+      const extension = file.name ? file.name.split('.').pop()?.toLowerCase() || 'jpg' : 'jpg';
+      const standardizedName = file.name || `mobile_image_${timestamp}.${extension}`;
+      
+      // Create a new file with standardized name if needed
+      const processedFile = file.name ? file : new File([file], standardizedName, {
+        type: file.type || 'image/jpeg',
+        lastModified: file.lastModified || timestamp
+      });
       
       if (imageType === "cor") {
+        // Clean up previous image
         if (corImagePreview && corImagePreview.startsWith('blob:')) {
           URL.revokeObjectURL(corImagePreview);
         }
-        setCorImage(file);
+        setCorImage(processedFile);
         setCorImagePreview(previewUrl);
         console.log('✅ Original COR file set successfully');
+        ToastNotification.success('COR image uploaded successfully!');
       } else if (imageType === "profile") {
+        // Clean up previous image
         if (profileImagePreview && profileImagePreview.startsWith('blob:')) {
           URL.revokeObjectURL(profileImagePreview);
         }
-        setProfileImage(file);
+        setProfileImage(processedFile);
         setProfileImagePreview(previewUrl);
         console.log('✅ Original profile file set successfully');
+        ToastNotification.success('Profile image uploaded successfully!');
       }
+      
     } catch (error) {
       console.error('❌ Fallback file processing error:', {
         error: error,
@@ -506,7 +591,24 @@ export default function Register() {
         fileType: file.type,
         fileSize: file.size
       });
-      ToastNotification.error('Unable to process this image. Please try a different image.');
+      
+      // Even if preview fails, try to set the file for upload
+      try {
+        if (imageType === "cor") {
+          setCorImage(file);
+          setCorImagePreview(null);
+          console.log('⚠️ COR file set without preview');
+          ToastNotification.warning('COR image uploaded but preview not available');
+        } else if (imageType === "profile") {
+          setProfileImage(file);
+          setProfileImagePreview(null);
+          console.log('⚠️ Profile file set without preview');
+          ToastNotification.warning('Profile image uploaded but preview not available');
+        }
+      } catch (finalError) {
+        console.error('❌ Final fallback failed:', finalError);
+        ToastNotification.error('Unable to process this image. Please try a different image or take a photo using the camera.');
+      }
     }
   }
 
@@ -526,6 +628,25 @@ export default function Register() {
     }
     setProfileImage(null);
     setProfileImagePreview(null);
+    
+    // Reset file inputs
+    const studentInput = document.getElementById("profileImageStudent");
+    const facultyInput = document.getElementById("profileImageFaculty");
+    if (studentInput) studentInput.value = "";
+    if (facultyInput) facultyInput.value = "";
+  }
+
+  function handleRemoveCorImage() {
+    // Clean up the existing image URL to prevent memory leaks
+    if (corImagePreview && corImagePreview.startsWith('blob:')) {
+      URL.revokeObjectURL(corImagePreview);
+    }
+    setCorImage(null);
+    setCorImagePreview(null);
+    
+    // Reset file input
+    const corInput = document.getElementById("corImage");
+    if (corInput) corInput.value = "";
   }
 
   return (
@@ -954,9 +1075,6 @@ export default function Register() {
                 <option value="2">Second Year</option>
                 <option value="3">Third Year</option>
                 <option value="4">Fourth Year</option>
-                <option value="5">Fifth Year</option>
-                <option value="6">Sixth Year</option>
-                <option value="Graduate">Graduate Student</option>
               </select>
             </div>
 
@@ -972,7 +1090,7 @@ export default function Register() {
                   type="file"
                   id="profileImageStudent"
                   className="image-upload-input"
-                  accept="image/jpeg,image/jpg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif"
+                  accept="image/*"
                   onChange={(e) => handleImageChange(e, "profile")}
                 />
                 {profileImagePreview ? (
@@ -987,9 +1105,9 @@ export default function Register() {
                 ) : (
                   <div>
                     <div className="upload-text">
-                      <FaCamera /> Click to upload your profile picture
+                      <FaFileImage /> Click to upload your profile picture
                     </div>
-                    <div className="upload-hint">PNG, JPG, JPEG, HEIC, HEIF up to 10MB</div>
+                    <div className="upload-hint">All image formats up to 15MB</div>
                   </div>
                 )}
               </div>
@@ -1033,7 +1151,7 @@ export default function Register() {
                   type="file"
                   id="corImage"
                   className="image-upload-input"
-                  accept="image/jpeg,image/jpg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif"
+                  accept="image/*"
                   onChange={(e) => handleImageChange(e, "cor")}
                 />
                 {corImagePreview ? (
@@ -1050,10 +1168,25 @@ export default function Register() {
                     <div className="upload-text">
                       <FaFileImage /> Click to upload your COR
                     </div>
-                    <div className="upload-hint">PNG, JPG, JPEG, HEIC, HEIF up to 10MB</div>
+                    <div className="upload-hint">All image formats up to 15MB</div>
                   </div>
                 )}
               </div>
+              {corImagePreview && (
+                <div className="upload-options">
+                  <button
+                    type="button"
+                    className="camera-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveCorImage();
+                    }}
+                    style={{ background: "#dc3545", borderColor: "#dc3545", color: "white" }}
+                  >
+                    <FaTrash /> Remove COR
+                  </button>
+                </div>
+              )}
             </div>
           </>
         )}
@@ -1106,7 +1239,7 @@ export default function Register() {
                   type="file"
                   id="profileImageFaculty"
                   className="image-upload-input"
-                  accept="image/jpeg,image/jpg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif"
+                  accept="image/*"
                   onChange={(e) => handleImageChange(e, "profile")}
                 />
                 {profileImagePreview ? (
@@ -1121,9 +1254,9 @@ export default function Register() {
                 ) : (
                   <div>
                     <div className="upload-text">
-                      <FaCamera /> Click to upload your profile picture
+                      <FaFileImage /> Click to upload your profile picture
                     </div>
-                    <div className="upload-hint">PNG, JPG, JPEG, HEIC, HEIF up to 10MB</div>
+                    <div className="upload-hint">All image formats up to 15MB</div>
                   </div>
                 )}
               </div>
