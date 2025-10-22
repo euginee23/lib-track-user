@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { FaBars, FaSignOutAlt } from 'react-icons/fa';
 import authService from "../utils/auth";
+import NotificationPopover from "./NotificationPopover";
 
 export default function Navbar({ onLogout }) {
   const dropdownRef = useRef(null);
@@ -48,9 +49,10 @@ export default function Navbar({ onLogout }) {
               Welcome, {user.firstName}
             </span>
           )}
+          <NotificationPopover />
           <button
             ref={btnRef}
-            className="navbar-toggler d-flex align-items-center justify-content-center"
+            className="navbar-toggler d-flex align-items-center justify-content-center ms-2"
             type="button"
             aria-expanded={show}
             style={{ width: '36px', height: '36px', padding: 0, backgroundColor: '#0A7075', borderRadius: '10%', border: '1px solid #031716', boxShadow: '0 1px 4px rgba(0,0,0,0.12)' }}
