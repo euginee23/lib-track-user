@@ -44,13 +44,39 @@ export default function Dashboard() {
         const finesRes = await fetch(`${API}/api/fines/user/${userId}`);
         const finesJson = await finesRes.json();
 
+        // Fetch penalties for user and merge into ongoing items (so active transactions show up-to-date fines)
+        let penaltiesJson = null;
+        try {
+          const penaltiesRes = await fetch(`${API}/api/penalties?user_id=${userId}`);
+          penaltiesJson = await penaltiesRes.json();
+        } catch (err) {
+          console.warn('Failed to fetch penalties for merging into ongoing items:', err);
+        }
+
         // Fetch history
         const historyRes = await fetch(`${API}/api/transactions/history?user_id=${userId}`);
         const historyJson = await historyRes.json();
 
         if (!mounted) return;
 
-        if (ongoingRes.ok) setOngoing(ongoingJson.data || []);
+        if (ongoingRes.ok) {
+          const penaltiesList = penaltiesJson?.data?.penalties || [];
+          const penaltyMap = {};
+          for (const p of penaltiesList) {
+            if (p.transaction_id) penaltyMap[p.transaction_id] = p;
+          }
+
+          const merged = (ongoingJson.data || []).map(t => {
+            const pen = penaltyMap[t.transaction_id];
+            const fineFromPenalty = pen && (pen.fine !== undefined && pen.fine !== null) ? Number(pen.fine) : null;
+            return {
+              ...t,
+              fine: fineFromPenalty !== null ? fineFromPenalty : (t.fine ? Number(t.fine) : 0)
+            };
+          });
+
+          setOngoing(merged);
+        }
         if (finesRes.ok) setFinesSummary(finesJson.data || null);
         if (historyRes.ok) setHistory(historyJson.data || []);
 
@@ -82,6 +108,15 @@ export default function Dashboard() {
     const now = new Date();
     const diff = Math.ceil((d - now) / (1000 * 60 * 60 * 24));
     return diff;
+  };
+
+  // Render a compact status badge similar to BookTransactions.getStatusBadge
+  const getStatusBadge = (transaction) => {
+    const d = daysRemaining(transaction.due_date);
+    if (d === null) return <span className="badge bg-secondary small">No due date</span>;
+    if (d < 0) return <span className="badge bg-danger small">Overdue</span>;
+    if (d === 0) return <span className="badge bg-warning text-dark small">Due today</span>;
+    return <span className="badge bg-success small">{d} day{d !== 1 ? 's' : ''}</span>;
   };
 
   const openReceipt = async (transaction) => {
@@ -191,56 +226,61 @@ export default function Dashboard() {
     }
   ];
 
+  const detailsList = finesSummary?.transactions || [];
+  const detailsContainerStyle = detailsList.length > 5
+    ? { maxHeight: '280px', overflowY: 'auto' }
+    : { maxHeight: 'none', overflowY: 'visible' };
+
   return (
     <div className="container py-4">
       {/* Top summary stats */}
       <div className="row mb-3">
         <div className="col-12">
           <div className="d-flex gap-3 flex-wrap">
-            <div className="card flex-fill shadow-sm" style={{ minWidth: 180 }}>
+            <div className="card flex-fill shadow-sm small" style={{ minWidth: 140 }}>
               <div className="card-body">
                 <div className="d-flex align-items-center justify-content-between">
                   <div>
                     <div className="text-muted small">Active Transactions</div>
-                    <div className="h4 mb-0">{ongoing.length}</div>
+                    <div className="h6 mb-0">{ongoing.length}</div>
                   </div>
-                  <div className="text-primary" style={{ fontSize: 28 }}><FaBook /></div>
+                  <div className="text-primary" style={{ fontSize: 20 }}><FaBook /></div>
                 </div>
               </div>
             </div>
 
-            <div className="card flex-fill shadow-sm" style={{ minWidth: 180 }}>
+            <div className="card flex-fill shadow-sm small" style={{ minWidth: 140 }}>
               <div className="card-body">
                 <div className="d-flex align-items-center justify-content-between">
                   <div>
                     <div className="text-muted small">Overdue</div>
-                    <div className="h4 mb-0 text-danger">{overdueCount}</div>
+                    <div className="h6 mb-0 text-danger">{overdueCount}</div>
                   </div>
-                  <div className="text-danger" style={{ fontSize: 28 }}><FaExclamationTriangle /></div>
+                  <div className="text-danger" style={{ fontSize: 20 }}><FaExclamationTriangle /></div>
                 </div>
               </div>
             </div>
 
-            <div className="card flex-fill shadow-sm" style={{ minWidth: 180 }}>
+            <div className="card flex-fill shadow-sm small" style={{ minWidth: 140 }}>
               <div className="card-body">
                 <div className="d-flex align-items-center justify-content-between">
                   <div>
                     <div className="text-muted small">Total Fines</div>
-                    <div className="h4 mb-0">₱{Number(finesSummary?.total_fine || 0).toFixed(2)}</div>
+                    <div className="h6 mb-0">₱{Number(finesSummary?.total_fine || 0).toFixed(2)}</div>
                   </div>
-                  <div className="text-success" style={{ fontSize: 28 }}><FaMoneyBill /></div>
+                  <div className="text-success" style={{ fontSize: 20 }}><FaMoneyBill /></div>
                 </div>
               </div>
             </div>
 
-            <div className="card flex-fill shadow-sm" style={{ minWidth: 180 }}>
+            <div className="card flex-fill shadow-sm small" style={{ minWidth: 140 }}>
               <div className="card-body">
                 <div className="d-flex align-items-center justify-content-between">
                   <div>
                     <div className="text-muted small">History Entries</div>
-                    <div className="h4 mb-0">{history.length}</div>
+                    <div className="h6 mb-0">{history.length}</div>
                   </div>
-                  <div className="text-secondary" style={{ fontSize: 28 }}><FaHistory /></div>
+                  <div className="text-secondary" style={{ fontSize: 20 }}><FaHistory /></div>
                 </div>
               </div>
             </div>
@@ -277,9 +317,9 @@ export default function Dashboard() {
                         <tr>
                           <th>Ref</th>
                           <th>Item</th>
-                          <th>Type</th>
+                          <th>Transaction Date</th>
                           <th>Due Date</th>
-                          <th>Days</th>
+                          <th>Status</th>
                           <th>Fine</th>
                           <th></th>
                         </tr>
@@ -290,24 +330,12 @@ export default function Dashboard() {
                             <td><strong>{t.reference_number || t.transaction_id}</strong></td>
                             <td>
                               <div className="fw-semibold">{t.book_title || t.research_title || 'Item'}</div>
-                              <small className="text-muted">{t.position ? t.position : ''} {t.department_acronym ? `· ${t.department_acronym}` : ''}</small>
+                              <small className="text-muted">{(t.book_title ? 'Book' : (t.research_title ? 'Research Paper' : (t.transaction_type ? (t.transaction_type.charAt(0).toUpperCase() + t.transaction_type.slice(1)) : 'N/A')))}</small>
                             </td>
-                            <td>
-                              <span className={`badge ${t.transaction_type === 'borrow' ? 'bg-primary' : t.transaction_type === 'reserve' ? 'bg-info text-dark' : 'bg-secondary'}`}>
-                                {t.transaction_type ? t.transaction_type.charAt(0).toUpperCase() + t.transaction_type.slice(1) : 'N/A'}
-                              </span>
-                            </td>
+                            <td className="small text-muted">{formatDate(t.transaction_date)}</td>
                           
-                            <td>{formatDate(t.due_date)}</td>
-                            <td>
-                              {(() => {
-                                const d = daysRemaining(t.due_date);
-                                if (d === null) return '—';
-                                if (d < 0) return <span className="text-danger">{Math.abs(d)} overdue</span>;
-                                if (d === 0) return <span className="text-warning">Due today</span>;
-                                return <span className="text-success">{d} day{d !== 1 ? 's' : ''}</span>;
-                              })()}
-                            </td>
+                            <td className="small text-muted">{formatDate(t.due_date)}</td>
+                            <td className="small">{getStatusBadge(t)}</td>
                             <td>
                               {t.fine && t.fine > 0 ? (
                                 <span className="badge bg-danger">₱{Number(t.fine).toFixed(2)}</span>
@@ -317,12 +345,12 @@ export default function Dashboard() {
                             </td>
                             <td className="text-end">
                               {(t.receipt_image || t.book_cover) ? (
-                                <button className="btn btn-sm btn-outline-secondary" onClick={() => openReceipt(t)}>
-                                  <FaReceipt /> <span className="ms-1">View Receipt</span>
+                                <button className="btn btn-sm btn-outline-secondary py-1 px-2" onClick={() => openReceipt(t)}>
+                                  <FaReceipt />
                                 </button>
                               ) : (
-                                <button className="btn btn-sm btn-outline-secondary" disabled>
-                                  <FaReceipt /> <span className="ms-1">No receipt</span>
+                                <button className="btn btn-sm btn-outline-secondary py-1 px-2" disabled>
+                                  <FaReceipt />
                                 </button>
                               )}
                             </td>
@@ -376,24 +404,24 @@ export default function Dashboard() {
 
                     <div className="mt-3">
                       <h6 className="mb-2">Details</h6>
-                      <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
-                        {(finesSummary.transactions || []).length === 0 ? (
+                      <div style={detailsContainerStyle}>
+                        {detailsList.length === 0 ? (
                           <div className="text-muted">No overdue transactions.</div>
                         ) : (
-                          (finesSummary.transactions || []).map(tx => (
-                              <div key={tx.transaction_id} className="border rounded p-2 mb-2">
-                                <div className="d-flex justify-content-between">
-                                  <div>
-                                    <div className="fw-semibold">{tx.reference_number || tx.reference || tx.transaction_id}</div>
-                                    <small className="text-muted">{tx.item_title || tx.book_title || tx.research_title || 'Unknown Item'} · Due: {formatDate(tx.due_date)}</small>
-                                  </div>
-                                  <div className="text-end">
-                                    <div className="text-danger">₱{Number(tx.fine || 0).toFixed(2)}</div>
-                                    <small className="text-muted">{tx.daysOverdue || 0} day(s)</small>
-                                  </div>
+                          detailsList.map((tx, idx) => (
+                            <div key={tx.transaction_id || idx} className="border rounded p-2 mb-2">
+                              <div className="d-flex justify-content-between">
+                                <div>
+                                  <div className="fw-semibold">{tx.reference_number || tx.reference || tx.transaction_id}</div>
+                                  <small className="text-muted">{tx.item_title || tx.book_title || tx.research_title || 'Unknown Item'} · Due: {formatDate(tx.due_date)}</small>
+                                </div>
+                                <div className="text-end">
+                                  <div className="text-danger">₱{Number(tx.fine || 0).toFixed(2)}</div>
+                                  <small className="text-muted">{tx.daysOverdue || 0} day(s)</small>
                                 </div>
                               </div>
-                            ))
+                            </div>
+                          ))
                         )}
                       </div>
                     </div>

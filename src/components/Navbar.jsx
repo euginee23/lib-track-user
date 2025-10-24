@@ -67,19 +67,9 @@ export default function Navbar({ onLogout }) {
           style={{ minWidth: '140px', padding: '8px', background: 'rgba(255,255,255,0.95)', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.10)', border: 'none', position: 'absolute', right: 0, top: '48px', zIndex: 100, display: show ? 'block' : 'none' }}
         >
           <li>
-            <Link 
-              to="/home" 
-              className="dropdown-item" 
-              style={{ fontSize: '0.85rem', color: '#031716', borderRadius: '6px', marginBottom: '4px', padding: '6px 12px', textDecoration: 'none' }}
-              onClick={() => setShow(false)}
-            >
-              Home
-            </Link>
-          </li>
-          <li>
-            <Link 
-              to="/dashboard" 
-              className="dropdown-item" 
+            <Link
+              to="/dashboard"
+              className="dropdown-item"
               style={{ fontSize: '0.85rem', color: '#031716', borderRadius: '6px', marginBottom: '4px', padding: '6px 12px', textDecoration: 'none' }}
               onClick={() => setShow(false)}
             >
@@ -87,33 +77,23 @@ export default function Navbar({ onLogout }) {
             </Link>
           </li>
           <li>
-            <Link 
-              to="/search-books" 
-              className="dropdown-item" 
+            <Link
+              to="/book-reservation"
+              className="dropdown-item"
               style={{ fontSize: '0.85rem', color: '#031716', borderRadius: '6px', marginBottom: '4px', padding: '6px 12px', textDecoration: 'none' }}
               onClick={() => setShow(false)}
             >
-              Search Books
+              Reserve a Book
             </Link>
           </li>
           <li>
-            <Link 
-              to="/my-borrowed" 
-              className="dropdown-item" 
+            <Link
+              to="/profile"
+              className="dropdown-item"
               style={{ fontSize: '0.85rem', color: '#031716', borderRadius: '6px', marginBottom: '4px', padding: '6px 12px', textDecoration: 'none' }}
               onClick={() => setShow(false)}
             >
-              My Borrowed
-            </Link>
-          </li>
-          <li>
-            <Link 
-              to="/profile" 
-              className="dropdown-item" 
-              style={{ fontSize: '0.85rem', color: '#031716', borderRadius: '6px', marginBottom: '4px', padding: '6px 12px', textDecoration: 'none' }}
-              onClick={() => setShow(false)}
-            >
-              Profile
+              Profile Settings
             </Link>
           </li>
           <li><hr className="dropdown-divider" style={{ margin: '4px 0' }} /></li>
