@@ -78,10 +78,13 @@ export default function Register() {
   function handleStudentIdChange(e) {
     let value = e.target.value.replace(/[^0-9]/g, "");
 
-    if (value.length > 8) {
-      value = value.slice(0, 8);
+    // Allow up to 9 digits (change from previous 8-digit limit)
+    if (value.length > 9) {
+      value = value.slice(0, 9);
     }
 
+
+    // Format as 4-remaining (will produce 4-5 when 9 digits are entered)
     if (value.length > 4) {
       value = value.slice(0, 4) + "-" + value.slice(4);
     }
@@ -1056,7 +1059,7 @@ export default function Register() {
                 id="studentId"
                 value={studentId}
                 onChange={handleStudentIdChange}
-                placeholder="1234-5678"
+                placeholder="1234-56789"
               />
             </div>
 

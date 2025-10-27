@@ -69,15 +69,34 @@ export default function Dashboard() {
           const merged = (ongoingJson.data || []).map(t => {
             const pen = penaltyMap[t.transaction_id];
             const fineFromPenalty = pen && (pen.fine !== undefined && pen.fine !== null) ? Number(pen.fine) : null;
+            const penaltyStatus = pen && pen.status ? String(pen.status).toLowerCase() : null;
             return {
               ...t,
-              fine: fineFromPenalty !== null ? fineFromPenalty : (t.fine ? Number(t.fine) : 0)
+              fine: fineFromPenalty !== null ? fineFromPenalty : (t.fine ? Number(t.fine) : 0),
+              // expose penalty info for UI (show Paid badge)
+              penaltyStatus: penaltyStatus === 'paid' ? 'Paid' : null,
+              penalty_id: pen?.penalty_id || null,
+              penalty_updated_at: pen?.updated_at || null,
             };
           });
 
           setOngoing(merged);
         }
-        if (finesRes.ok) setFinesSummary(finesJson.data || null);
+        if (finesRes.ok) {
+          setFinesSummary(finesJson.data || null);
+          // If the fines API provides a payments history, use it. Otherwise fall back to mock.
+          const paymentsFromApi = (finesJson.data && (finesJson.data.payments || finesJson.data.payment_history)) || null;
+          if (paymentsFromApi && Array.isArray(paymentsFromApi) && paymentsFromApi.length > 0) {
+            // Normalize shape: ensure each section and item has a paid flag for UI design
+            const normalized = paymentsFromApi.map(section => ({
+              ...section,
+              items: (section.items || []).map(it => ({ ...it, paid: true }))
+            }));
+            setPaymentHistory(normalized);
+          } else {
+            setPaymentHistory(defaultPaymentHistory);
+          }
+        }
         if (historyRes.ok) setHistory(historyJson.data || []);
 
       } catch (err) {
@@ -113,10 +132,24 @@ export default function Dashboard() {
   // Render a compact status badge similar to BookTransactions.getStatusBadge
   const getStatusBadge = (transaction) => {
     const d = daysRemaining(transaction.due_date);
-    if (d === null) return <span className="badge bg-secondary small">No due date</span>;
-    if (d < 0) return <span className="badge bg-danger small">Overdue</span>;
-    if (d === 0) return <span className="badge bg-warning text-dark small">Due today</span>;
-    return <span className="badge bg-success small">{d} day{d !== 1 ? 's' : ''}</span>;
+    // build main badge based on due date
+    let mainBadge = null;
+    if (d === null) mainBadge = <span className="badge bg-secondary small">No due date</span>;
+    else if (d < 0) mainBadge = <span className="badge bg-danger small">Overdue</span>;
+    else if (d === 0) mainBadge = <span className="badge bg-warning text-dark small">Due today</span>;
+    else mainBadge = <span className="badge bg-success small">{d} day{d !== 1 ? 's' : ''}</span>;
+
+    // If there's a paid penalty for this transaction, show a small Paid badge stacked above
+    if (transaction && transaction.penaltyStatus === 'Paid') {
+      return (
+        <div className="d-flex flex-column align-items-start">
+          <small className="badge bg-success text-white small" style={{ lineHeight: 1, padding: '2px 6px' }}>Paid</small>
+          <div style={{ marginTop: 4 }}>{mainBadge}</div>
+        </div>
+      );
+    }
+
+    return mainBadge;
   };
 
   const openReceipt = async (transaction) => {
@@ -198,30 +231,32 @@ export default function Dashboard() {
     }
   }).length;
 
-  // Static fine payment history (temporary placeholder)
-  const paymentHistory = [
+  // Payment history (prefer API-backed payments when available, fallback to mock design)
+  const [paymentHistory, setPaymentHistory] = useState([]);
+
+  const defaultPaymentHistory = [
     {
       label: 'Today',
       items: [
-        { time: '1:49 AM', title: 'Pay via Scanned QR', amount: -100.00 },
+        { time: '1:49 AM', title: 'Pay via Scanned QR', amount: -100.00, paid: true },
       ]
     },
     {
       label: 'Yesterday',
       items: [
-        { time: '3:35 AM', title: 'Send Money', amount: -135.00 },
+        { time: '3:35 AM', title: 'Send Money', amount: -135.00, paid: true },
       ]
     },
     {
       label: 'Feb 21, 2025',
       items: [
-        { time: '10:09 PM', title: 'Send Money', amount: 2600.00 },
+        { time: '10:09 PM', title: 'Send Money', amount: 2600.00, paid: false },
       ]
     },
     {
       label: 'Feb 19, 2025',
       items: [
-        { time: '8:12 PM', title: 'Library Fine Payment', amount: -55.00 },
+        { time: '8:12 PM', title: 'Library Fine Payment', amount: -55.00, paid: true },
       ]
     }
   ];
@@ -339,6 +374,8 @@ export default function Dashboard() {
                             <td>
                               {t.fine && t.fine > 0 ? (
                                 <span className="badge bg-danger">₱{Number(t.fine).toFixed(2)}</span>
+                              ) : t.penaltyStatus === 'Paid' ? (
+                                <span className="badge bg-success">Paid</span>
                               ) : (
                                 <span className="badge bg-success">No fine</span>
                               )}
@@ -408,20 +445,27 @@ export default function Dashboard() {
                         {detailsList.length === 0 ? (
                           <div className="text-muted">No overdue transactions.</div>
                         ) : (
-                          detailsList.map((tx, idx) => (
-                            <div key={tx.transaction_id || idx} className="border rounded p-2 mb-2">
-                              <div className="d-flex justify-content-between">
-                                <div>
-                                  <div className="fw-semibold">{tx.reference_number || tx.reference || tx.transaction_id}</div>
-                                  <small className="text-muted">{tx.item_title || tx.book_title || tx.research_title || 'Unknown Item'} · Due: {formatDate(tx.due_date)}</small>
-                                </div>
-                                <div className="text-end">
-                                  <div className="text-danger">₱{Number(tx.fine || 0).toFixed(2)}</div>
-                                  <small className="text-muted">{tx.daysOverdue || 0} day(s)</small>
+                          detailsList.map((tx, idx) => {
+                            const isPaid = tx && (String(tx.status).toLowerCase() === 'paid' || tx.penaltyStatus === 'Paid' || tx.paid === true);
+                            return (
+                              <div key={tx.transaction_id || idx} className="border rounded p-2 mb-2">
+                                <div className="d-flex justify-content-between">
+                                  <div>
+                                    <div className="fw-semibold">{tx.reference_number || tx.reference || tx.transaction_id}</div>
+                                    <small className="text-muted">{tx.item_title || tx.book_title || tx.research_title || 'Unknown Item'} · Due: {formatDate(tx.due_date)}</small>
+                                  </div>
+                                  <div className="text-end">
+                                    {isPaid ? (
+                                      <span className="badge bg-success">Paid</span>
+                                    ) : (
+                                      <div className="text-danger">₱{Number(tx.fine || 0).toFixed(2)}</div>
+                                    )}
+                                    <small className="text-muted d-block">{tx.daysOverdue || 0} day(s)</small>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          ))
+                            );
+                          })
                         )}
                       </div>
                     </div>
@@ -435,20 +479,25 @@ export default function Dashboard() {
               <div className="card-body">
                 <h5 className="mb-3"><FaReceipt className="me-2" />Fine Payment History</h5>
                 <div className="list-group list-group-flush">
-                  {paymentHistory.map(section => (
-                    <div key={section.label} className="mb-3">
-                      <div className="text-muted small mb-2">{section.label}</div>
-                      {section.items.map((it, idx) => (
-                        <div key={idx} className="d-flex justify-content-between align-items-center py-2 border-top">
-                          <div>
-                            <div className="fw-semibold">{it.title}</div>
-                            <small className="text-muted">{it.time}</small>
-                          </div>
-                          <div className={`fw-bold ${it.amount < 0 ? 'text-danger' : 'text-success'}`}>{it.amount < 0 ? '-' : '+'}₱{Math.abs(it.amount).toFixed(2)}</div>
+                      {paymentHistory.map(section => (
+                        <div key={section.label} className="mb-3">
+                          <div className="text-muted small mb-2">{section.label}</div>
+                          {section.items.map((it, idx) => (
+                            <div key={idx} className="d-flex justify-content-between align-items-center py-2 border-top">
+                              <div>
+                                <div className="fw-semibold">
+                                  {it.title}
+                                  {it.paid ? (
+                                    <span className="badge bg-success ms-2 small">Paid</span>
+                                  ) : null}
+                                </div>
+                                <small className="text-muted">{it.time}</small>
+                              </div>
+                              <div className={`fw-bold ${it.amount < 0 ? 'text-danger' : 'text-success'}`}>{it.amount < 0 ? '-' : '+'}₱{Math.abs(it.amount).toFixed(2)}</div>
+                            </div>
+                          ))}
                         </div>
                       ))}
-                    </div>
-                  ))}
                 </div>
               </div>
             </div>
