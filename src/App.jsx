@@ -14,6 +14,7 @@ import Login from './pages/Login';
 import Register from "./pages/Register";
 import VerifyEmail from "./pages/VerifyEmail";
 import LibrarianApproval from "./pages/LibrarianApproval";
+import RegisterFingerprint from "./pages/RegisterFingerprint";
 import Dashboard from "./pages/Dashboard";
 import BookReservation from "./pages/BookReservation";
 import Profile from "./pages/Profile";
@@ -84,11 +85,14 @@ function App() {
 
         const isEmailVerified = user.email_verification === 1;
         const isLibrarianApproved = user.librarian_approval === 1;
+        const hasFingerprint = user.hasFingerprint === true || user.hasFingerprint === 1;
 
         if (!isEmailVerified) {
           setShouldRender(<Navigate to="/verify-email" state={{ email: user.email }} replace />);
         } else if (!isLibrarianApproved) {
           setShouldRender(<Navigate to="/librarian-approval" state={{ userEmail: user.email }} replace />);
+        } else if (!hasFingerprint) {
+          setShouldRender(<Navigate to="/register-fingerprint" state={{ userEmail: user.email }} replace />);
         } else {
           setShouldRender(children);
         }
@@ -148,11 +152,14 @@ function App() {
 
         const isEmailVerified = user.email_verification === 1;
         const isLibrarianApproved = user.librarian_approval === 1;
+        const hasFingerprint = user.hasFingerprint === true || user.hasFingerprint === 1;
 
         if (!isEmailVerified) {
           setShouldRender(<Navigate to="/verify-email" state={{ email: user.email }} replace />);
         } else if (!isLibrarianApproved) {
           setShouldRender(<Navigate to="/librarian-approval" state={{ userEmail: user.email }} replace />);
+        } else if (!hasFingerprint) {
+          setShouldRender(<Navigate to="/register-fingerprint" state={{ userEmail: user.email }} replace />);
         } else {
           setShouldRender(<Navigate to="/dashboard" replace />);
         }
@@ -204,22 +211,50 @@ function App() {
 
         const isEmailVerified = user.email_verification === 1;
         const isLibrarianApproved = user.librarian_approval === 1;
+        const hasFingerprint = user.hasFingerprint === true || user.hasFingerprint === 1;
         const currentPath = location.pathname;
 
-        if (isEmailVerified && isLibrarianApproved) {
+        // If everything is already satisfied, go to dashboard
+        if (isEmailVerified && isLibrarianApproved && hasFingerprint) {
           setShouldRender(<Navigate to="/dashboard" replace />);
           return;
         }
 
+        // If email is verified but librarian approval pending, send to librarian approval
+        if (isEmailVerified && !isLibrarianApproved) {
+          setShouldRender(<Navigate to="/librarian-approval" state={{ userEmail: user.email }} replace />);
+          return;
+        }
+
+        // If email not verified, route to verify-email when appropriate
+        if (!isEmailVerified && currentPath !== "/verify-email") {
+          setShouldRender(<Navigate to="/verify-email" state={{ email: user.email }} replace />);
+          return;
+        }
+
+        // If email verified and approved but missing fingerprint, allow register-fingerprint
+        if (isEmailVerified && isLibrarianApproved && !hasFingerprint) {
+          if (currentPath === "/register-fingerprint") {
+            setShouldRender(children);
+          } else {
+            setShouldRender(<Navigate to="/register-fingerprint" state={{ userEmail: user.email }} replace />);
+          }
+          return;
+        }
+
+        // If we're on verify-email and it's now verified, move on to approval or fingerprint
         if (currentPath === "/verify-email" && isEmailVerified) {
           if (!isLibrarianApproved) {
             setShouldRender(<Navigate to="/librarian-approval" state={{ userEmail: user.email }} replace />);
+          } else if (!hasFingerprint) {
+            setShouldRender(<Navigate to="/register-fingerprint" state={{ userEmail: user.email }} replace />);
           } else {
             setShouldRender(<Navigate to="/dashboard" replace />);
           }
           return;
         }
 
+        // If we're on librarian-approval but email not verified, send back to verify-email
         if (currentPath === "/librarian-approval" && !isEmailVerified) {
           setShouldRender(<Navigate to="/verify-email" state={{ email: user.email }} replace />);
           return;
@@ -389,7 +424,7 @@ function App() {
       
       {/* Show Navbar only for authenticated users and exclude verification pages */}
       {isAuthenticated &&
-        !["/", "/login", "/register", "/verify-email", "/librarian-approval", "/forgot-password"].includes(location.pathname) && (
+        !["/", "/login", "/register", "/verify-email", "/librarian-approval", "/register-fingerprint", "/forgot-password"].includes(location.pathname) && (
           <Navbar onLogout={handleLogout} />
         )}
 
@@ -433,6 +468,14 @@ function App() {
             element={
               <VerificationRoute>
                 <LibrarianApproval />
+              </VerificationRoute>
+            }
+          />
+          <Route
+            path="/register-fingerprint"
+            element={
+              <VerificationRoute>
+                <RegisterFingerprint />
               </VerificationRoute>
             }
           />
@@ -489,7 +532,7 @@ function App() {
       
       {/* Show Chatbot only for authenticated users and exclude verification pages */}
       {isAuthenticated &&
-        !["/", "/login", "/register", "/verify-email", "/librarian-approval", "/forgot-password"].includes(location.pathname) && (
+        !["/", "/login", "/register", "/verify-email", "/librarian-approval", "/register-fingerprint", "/forgot-password"].includes(location.pathname) && (
           <ChatbotComponent />
         )}
     </>

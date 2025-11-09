@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { cancelReservation as cancelReservationApi } from './cancelReservation';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL;
 
@@ -186,7 +187,15 @@ export const deleteReservation = async (reservationId) => {
  * @returns {Promise<Object>} API response confirming cancellation
  */
 export const cancelReservation = async (reservationId) => {
-  return deleteReservation(reservationId);
+  // Prefer server-side cancel endpoint which handles restoring resource availability
+  try {
+    const resp = await cancelReservationApi(reservationId);
+    return resp;
+  } catch (err) {
+    // Fallback to hard delete if the cancel endpoint fails for any reason
+    console.warn('Cancel endpoint failed, falling back to deleteReservation:', err?.message || err);
+    return deleteReservation(reservationId);
+  }
 };
 
 /**

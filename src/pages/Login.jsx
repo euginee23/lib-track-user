@@ -44,13 +44,15 @@ export default function Login() {
     } catch (error) {
       if (error.result?.user && error.result?.token) {
         const user = error.result.user;
-        
+
         ToastNotification.success(`Hello, ${user.firstName} ${user.lastName}`);
-        
+
         if (user.email_verification === 0) {
           navigate("/verify-email", { state: { email: user.email }, replace: true });
         } else if (user.librarian_approval === 0) {
           navigate("/librarian-approval", { state: { userEmail: user.email }, replace: true });
+        } else if (!user.hasFingerprint) {
+          navigate("/register-fingerprint", { state: { userEmail: user.email }, replace: true });
         } else {
           navigate("/", { replace: true });
         }

@@ -3,7 +3,8 @@ import { FaBook, FaClock, FaCalendarAlt, FaEnvelope, FaBell, FaTrash, FaEye, FaS
 import { toast } from 'react-toastify';
 import { getReservableBooks, searchBooks, getCategories } from '../../api/bookReservation/getBooks';
 import { getAvailableResearches, searchResearches, getResearchDepartments } from '../../api/bookReservation/getResearches';
-import { createBookReservation, createResearchReservation, deleteReservation } from '../../api/bookReservation/postReservation';
+import { createBookReservation, createResearchReservation } from '../../api/bookReservation/postReservation';
+import { cancelReservation as cancelReservationApi } from '../../api/bookReservation/cancelReservation';
 import { getUserReservations } from '../../api/bookReservation/getReservation';
 import BookDetailModal from '../modals/BookDetailModal';
 import ResearchDetailModal from '../modals/ResearchDetailModal';
@@ -256,7 +257,9 @@ function BookReservation() {
           yearPublication: reservation.year_publication,
           reservationDate: reservation.updated_at ? new Date(reservation.updated_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : null,
           status: reservation.status?.toLowerCase() === 'pending' ? 'waiting' : 
-                  reservation.status?.toLowerCase() === 'approved' ? 'ready' : 'expired',
+          reservation.status?.toLowerCase() === 'approved' ? 'ready' : 
+          reservation.status?.toLowerCase() === 'rejected' ? 'rejected' : 
+          reservation.status?.toLowerCase() === 'cancelled' ? 'cancelled' : 'waiting',
           reason: reservation.reason,
           coverImage: coverImage,
           reservation_type: reservation.reservation_type,
@@ -370,17 +373,24 @@ function BookReservation() {
     try {
       setLoading(true);
 
-      const response = await deleteReservation(reservationId);
+      // Prefer the server-side cancel endpoint which handles transactional
+      // state changes (marks reservation Cancelled and restores availability
+      // when needed).
+      const response = await cancelReservationApi(reservationId);
 
-      if (response.success) {
+      // The helper throws on network/HTTP errors, but some backends return
+      // a payload with success/message. Handle both shapes.
+      const ok = response && (response.success === true || response.affectedRows || response.id || response.reservation_id);
+
+      if (ok) {
         toast.success('Reservation cancelled successfully');
-        
-        // Reload reservations
+
+        // Refresh UI data
         await loadReservationsData();
         await loadBooksData();
         await loadResearchesData();
       } else {
-        throw new Error(response.message || 'Failed to cancel reservation');
+        throw new Error(response?.message || 'Failed to cancel reservation');
       }
 
     } catch (err) {
@@ -397,8 +407,10 @@ function BookReservation() {
         return <span className="badge bg-success">Ready to Claim</span>;
       case 'waiting':
         return <span className="badge bg-warning">In Queue</span>;
-      case 'expired':
-        return <span className="badge bg-danger">Expired</span>;
+      case 'rejected':
+        return <span className="badge bg-danger">Rejected</span>;
+      case 'cancelled':
+        return <span className="badge bg-secondary">Cancelled</span>;
       default:
         return <span className="badge bg-secondary">Unknown</span>;
     }
@@ -446,6 +458,13 @@ function BookReservation() {
   useEffect(() => {
     setCurrentPageBooks(1);
     setCurrentPageResearch(1);
+  }, [activeTab]);
+
+  // Reload reservations when switching to reservations tab to get latest status updates
+  useEffect(() => {
+    if (activeTab === 'reservations') {
+      loadReservationsData();
+    }
   }, [activeTab]);
 
   return (
@@ -1722,6 +1741,7 @@ function BookReservation() {
                   {myReservations.map(reservation => {
                     const isBook = reservation.reservation_type === 'book';
                     const isResearch = reservation.reservation_type === 'research_paper';
+                    const isDisabled = reservation.status === 'rejected' || reservation.status === 'cancelled';
                     
                     return (
                       <div key={reservation.id} className="col-12">
@@ -1879,6 +1899,60 @@ function BookReservation() {
                                   }}>
                                     <FaCheckCircle size={window.innerWidth < 768 ? 9 : 11} />
                                     {window.innerWidth < 768 ? 'Ready' : 'Ready to Claim'}
+                                  </span>
+                                ) : reservation.status === 'waiting' ? (
+                                  <span style={{
+                                    background: 'linear-gradient(135deg, #F59E0B, #FCD34D)',
+                                    color: 'white',
+                                    fontSize: window.innerWidth < 768 ? '10px' : '11px',
+                                    fontWeight: '700',
+                                    padding: window.innerWidth < 768 ? '6px 12px' : '8px 16px',
+                                    borderRadius: window.innerWidth < 768 ? '8px' : '10px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: window.innerWidth < 768 ? '5px' : '7px',
+                                    boxShadow: '0 2px 8px rgba(245, 158, 11, 0.25)',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.3px'
+                                  }}>
+                                    <FaClock size={window.innerWidth < 768 ? 9 : 11} />
+                                    {window.innerWidth < 768 ? 'Pending' : 'Pending Approval'}
+                                  </span>
+                                ) : reservation.status === 'rejected' ? (
+                                  <span style={{
+                                    background: 'linear-gradient(135deg, #ef4444, #f43f5e)',
+                                    color: 'white',
+                                    fontSize: window.innerWidth < 768 ? '10px' : '11px',
+                                    fontWeight: '700',
+                                    padding: window.innerWidth < 768 ? '6px 12px' : '8px 16px',
+                                    borderRadius: window.innerWidth < 768 ? '8px' : '10px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: window.innerWidth < 768 ? '5px' : '7px',
+                                    boxShadow: '0 2px 8px rgba(239,68,68,0.18)',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.3px'
+                                  }}>
+                                    <FaTimes size={window.innerWidth < 768 ? 9 : 11} />
+                                    {window.innerWidth < 768 ? 'Rejected' : 'Rejected'}
+                                  </span>
+                                ) : reservation.status === 'cancelled' ? (
+                                  <span style={{
+                                    background: 'linear-gradient(135deg, #6b7280, #9ca3af)',
+                                    color: 'white',
+                                    fontSize: window.innerWidth < 768 ? '10px' : '11px',
+                                    fontWeight: '700',
+                                    padding: window.innerWidth < 768 ? '6px 12px' : '8px 16px',
+                                    borderRadius: window.innerWidth < 768 ? '8px' : '10px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: window.innerWidth < 768 ? '5px' : '7px',
+                                    boxShadow: '0 2px 8px rgba(107,115,128,0.18)',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.3px'
+                                  }}>
+                                    <FaTimes size={window.innerWidth < 768 ? 9 : 11} />
+                                    {window.innerWidth < 768 ? 'Cancelled' : 'Cancelled'}
                                   </span>
                                 ) : (
                                   <span style={{
@@ -2099,7 +2173,7 @@ function BookReservation() {
                                 marginTop: 'auto'
                               }}>
                                 {reservation.status === 'ready' && (
-                                  <button 
+                                  <div
                                     style={{
                                       flex: 1,
                                       background: 'linear-gradient(135deg, #10B981, #34D399)',
@@ -2114,30 +2188,19 @@ function BookReservation() {
                                       justifyContent: 'center',
                                       gap: window.innerWidth < 768 ? '5px' : '6px',
                                       boxShadow: '0 3px 12px rgba(16, 185, 129, 0.3)',
-                                      cursor: 'pointer',
-                                      transition: 'all 0.2s ease',
                                       textTransform: 'uppercase',
-                                      letterSpacing: '0.5px'
+                                      letterSpacing: '0.5px',
+                                      cursor: 'default'
                                     }}
-                                    onMouseEnter={(e) => {
-                                      if (window.innerWidth >= 768) {
-                                        e.currentTarget.style.transform = 'translateY(-1px)';
-                                        e.currentTarget.style.boxShadow = '0 5px 16px rgba(16, 185, 129, 0.4)';
-                                      }
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      if (window.innerWidth >= 768) {
-                                        e.currentTarget.style.transform = 'translateY(0)';
-                                        e.currentTarget.style.boxShadow = '0 3px 12px rgba(16, 185, 129, 0.3)';
-                                      }
-                                    }}
+                                    title="Ready to claim at the library"
                                   >
                                     <FaCheckCircle size={window.innerWidth < 768 ? 10 : 12} />
-                                    {window.innerWidth < 768 ? 'Claim' : 'Claim Now'}
-                                  </button>
+                                    {window.innerWidth < 768 ? 'Ready' : 'Ready to Claim'}
+                                  </div>
                                 )}
                                 <button
                                   onClick={() => handleCancelReservation(reservation.id)}
+                                  disabled={isDisabled}
                                   style={{
                                     background: reservation.status === 'ready' ? 'rgba(239, 68, 68, 0.1)' : 'linear-gradient(135deg, #EF4444, #F87171)',
                                     color: reservation.status === 'ready' ? '#EF4444' : 'white',
@@ -2146,8 +2209,9 @@ function BookReservation() {
                                     fontSize: window.innerWidth < 768 ? '10px' : '12px',
                                     fontWeight: '700',
                                     padding: window.innerWidth < 768 ? '10px 12px' : '12px 16px',
-                                    boxShadow: reservation.status === 'ready' ? 'none' : '0 3px 12px rgba(239, 68, 68, 0.3)',
-                                    cursor: 'pointer',
+                                    boxShadow: reservation.status === 'ready' || isDisabled ? 'none' : '0 3px 12px rgba(239, 68, 68, 0.3)',
+                                    cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                    opacity: isDisabled ? 0.6 : 1,
                                     transition: 'all 0.2s ease',
                                     display: 'flex',
                                     alignItems: 'center',
@@ -2159,25 +2223,29 @@ function BookReservation() {
                                   }}
                                   onMouseEnter={(e) => {
                                     if (window.innerWidth >= 768) {
-                                      if (reservation.status !== 'ready') {
+                                      if (!isDisabled && reservation.status !== 'ready') {
                                         e.currentTarget.style.transform = 'translateY(-1px)';
                                         e.currentTarget.style.boxShadow = '0 5px 16px rgba(239, 68, 68, 0.4)';
-                                      } else {
+                                      } else if (!isDisabled && reservation.status === 'ready') {
                                         e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)';
                                       }
                                     }
                                   }}
                                   onMouseLeave={(e) => {
                                     if (window.innerWidth >= 768) {
-                                      if (reservation.status !== 'ready') {
+                                      if (!isDisabled && reservation.status !== 'ready') {
                                         e.currentTarget.style.transform = 'translateY(0)';
                                         e.currentTarget.style.boxShadow = '0 3px 12px rgba(239, 68, 68, 0.3)';
-                                      } else {
+                                      } else if (!isDisabled && reservation.status === 'ready') {
                                         e.currentTarget.style.background = 'rgba(239, 68, 68, 0.1)';
                                       }
                                     }
                                   }}
-                                  title="Cancel Reservation"
+                                  title={
+                                    reservation.status === 'rejected' ? 'Cannot cancel a rejected reservation' :
+                                    reservation.status === 'cancelled' ? 'Reservation already cancelled' :
+                                    'Cancel Reservation'
+                                  }
                                 >
                                   <FaTimes size={window.innerWidth < 768 ? 10 : 12} />
                                   Cancel

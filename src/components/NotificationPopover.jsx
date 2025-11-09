@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { FaBell, FaBook, FaExclamationTriangle, FaInfoCircle, FaCheckCircle } from 'react-icons/fa';
 import WebSocketClient from "../../api/websockets/websocket-client";
 import authService from "../utils/auth";
+import { getNotifications } from "../../api/notifications/getNotifications";
+import { deleteNotifications } from "../../api/notifications/deleteNotification";
 
 const NotificationPopover = () => {
   const [show, setShow] = useState(false);
@@ -14,6 +16,29 @@ const NotificationPopover = () => {
   });
   const dropdownRef = useRef(null);
   const btnRef = useRef(null);
+  const currentUserRef = useRef(null);
+
+  // Map API notification object to UI shape used in this component
+  function mapApiToUi(n) {
+    const id = n.notification_id ?? n.id ?? n._id ?? n.id;
+    const type = n.notification_type ?? n.type ?? n.category ?? 'system';
+    const message = n.notification_message ?? n.message ?? n.body ?? '';
+    const title = n.title ?? (type === 'system' ? 'System' : (n.summary ?? 'Notification'));
+    const createdAt = n.created_at ?? n.createdAt ?? n.timestamp ?? n.ts ?? Date.now();
+
+    return {
+      id,
+      type,
+      title,
+      message,
+      timestamp: new Date(createdAt),
+      read: !!n.read,
+      icon: getIconForNotificationType(type),
+      color: getColorForNotificationType(type),
+      priority: n.priority || 'medium',
+      user_id: n.user_id ?? n.userId ?? null
+    };
+  }
 
   // Mock notification data and WebSocket listener
   useEffect(() => {
@@ -36,59 +61,29 @@ const NotificationPopover = () => {
       console.warn("No logged-in user found, notifications will not be filtered");
     }
 
-    const mockNotifications = [
-      {
-        id: 1,
-        type: 'book_due',
-        title: 'Book Due Soon',
-        message: 'Your book "Introduction to Programming" is due in 2 days.',
-        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-        read: false,
-        icon: FaBook,
-        color: '#f39c12'
-      },
-      {
-        id: 2,
-        type: 'overdue',
-        title: 'Overdue Book',
-        message: 'Your book "Database Systems" is overdue. Please return it to avoid fines.',
-        timestamp: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // 1 day ago
-        read: false,
-        icon: FaExclamationTriangle,
-        color: '#e74c3c'
-      },
-      {
-        id: 3,
-        type: 'reservation_ready',
-        title: 'Reserved Book Available',
-        message: 'Your reserved book "Web Development Fundamentals" is now available for pickup.',
-        timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000), // 3 hours ago
-        read: false,
-        icon: FaCheckCircle,
-        color: '#27ae60'
-      },
-      {
-        id: 4,
-        type: 'system',
-        title: 'Library Hours Update',
-        message: 'Library will be closed tomorrow for maintenance from 9 AM to 2 PM.',
-        timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000), // 5 hours ago
-        read: true,
-        icon: FaInfoCircle,
-        color: '#3498db'
-      },
-      {
-        id: 5,
-        type: 'book_returned',
-        title: 'Book Returned Successfully',
-        message: 'You have successfully returned "Advanced Mathematics".',
-        timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
-        read: true,
-        icon: FaCheckCircle,
-        color: '#27ae60'
+    // store current user id for other handlers (clear all)
+    currentUserRef.current = currentUserId;
+
+    // Load notifications from API for the current user
+    const loadNotifications = async (uid) => {
+      try {
+        if (!uid) {
+          // If no user id available, fetch global/system notifications (omit filter)
+          const data = await getNotifications({ page: 1, limit: 50 });
+          const list = Array.isArray(data?.notifications) ? data.notifications : (Array.isArray(data) ? data : []);
+          setNotifications(list.map(mapApiToUi));
+          return;
+        }
+
+        const data = await getNotifications({ user_id: uid, page: 1, limit: 50 });
+        const list = Array.isArray(data?.notifications) ? data.notifications : (Array.isArray(data) ? data : []);
+        setNotifications(list.map(mapApiToUi));
+      } catch (err) {
+        console.error('User: Failed to load notifications', err?.message || err);
       }
-    ];
-    setNotifications(mockNotifications);
+    };
+
+    loadNotifications(currentUserId);
 
     // Listen for real-time notifications from admin
     const handleUserNotification = (payload) => {
@@ -250,9 +245,24 @@ const NotificationPopover = () => {
     );
   };
 
-  const clearAll = () => {
-    setNotifications([]);
-    setShow(false);
+  const clearAll = async () => {
+    try {
+      const userId = currentUserRef.current;
+      // If userId exists, request server to delete all notifications for this user
+      if (userId) {
+        await deleteNotifications({ user_id: userId });
+      } else {
+        // Fallback: attempt to delete via empty ids array (server may ignore)
+        await deleteNotifications({ ids: notifications.map(n => n.id) });
+      }
+      setNotifications([]);
+      setShow(false);
+    } catch (err) {
+      console.error('User: Failed to clear notifications', err?.message || err);
+      // still clear UI to avoid blocking UX, but keep logs
+      setNotifications([]);
+      setShow(false);
+    }
   };
 
   return (
