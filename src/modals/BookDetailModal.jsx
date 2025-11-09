@@ -15,17 +15,26 @@ const BookDetailModal = ({ book, onClose, onReserve }) => {
   }, []);
 
   const handleReserveCopy = (copyId) => {
-    setReservingCopyId(copyId);
-    if (onReserve) {
-      onReserve(copyId);
+    // Show confirmation dialog
+    const confirmReservation = window.confirm(
+      `Are you sure you want to reserve this book copy?\n\nBook: ${book.book_title}\nCopy ID: ${copyId}\n\nYour reservation will be pending for approval.`
+    );
+    
+    if (confirmReservation) {
+      setReservingCopyId(copyId);
+      if (onReserve) {
+        onReserve(copyId);
+      }
+      // Reset after animation
+      setTimeout(() => setReservingCopyId(null), 2000);
     }
-    // Reset after animation
-    setTimeout(() => setReservingCopyId(null), 2000);
   };
 
-  // Filter only available and borrowed copies (reservable ones)
+  // Filter available, borrowed, and reserved copies (all visible, but reserved will be disabled)
   const reservableCopies = book.copies?.filter(copy => 
-    copy.status?.toLowerCase() === 'available' || copy.status?.toLowerCase() === 'borrowed'
+    copy.status?.toLowerCase() === 'available' || 
+    copy.status?.toLowerCase() === 'borrowed' ||
+    copy.status?.toLowerCase() === 'reserved'
   ) || [];
   
   return (
@@ -488,12 +497,20 @@ const BookDetailModal = ({ book, onClose, onReserve }) => {
             >
               {reservableCopies.map((copy, index) => {
                 const isAvailable = copy.status?.toLowerCase() === 'available';
+                const isReserved = copy.status?.toLowerCase() === 'reserved';
+                const isBorrowed = copy.status?.toLowerCase() === 'borrowed';
                 const isReserving = reservingCopyId === copy.book_id;
                 
                 // Generate location string from book's shelf data
                 const locationText = book.location || 
                   `${book.shelf_number ? `Shelf ${book.shelf_number}` : ''}${book.shelf_column ? `, Col ${book.shelf_column}` : ''}${book.shelf_row ? `, Row ${book.shelf_row}` : ''}`.replace(/^, /, '').trim() || 
                   'Location not specified';
+                
+                // Determine border color based on status
+                let borderColor = 'rgba(107, 163, 190, 0.3)'; // Default gray
+                if (isAvailable) borderColor = 'rgba(16, 185, 129, 0.3)'; // Green
+                else if (isReserved) borderColor = 'rgba(139, 92, 246, 0.4)'; // Purple
+                else if (isBorrowed) borderColor = 'rgba(245, 158, 11, 0.3)'; // Amber
                 
                 return (
                   <div
@@ -502,12 +519,11 @@ const BookDetailModal = ({ book, onClose, onReserve }) => {
                       background: 'rgba(255, 255, 255, 0.95)',
                       borderRadius: isMobile ? '14px' : '16px',
                       padding: '0',
-                      border: isAvailable 
-                        ? '2px solid rgba(16, 185, 129, 0.3)'
-                        : '2px solid rgba(245, 158, 11, 0.3)',
+                      border: `2px solid ${borderColor}`,
                       overflow: 'hidden',
                       transition: 'all 0.3s ease',
-                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)'
+                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                      opacity: isReserved ? 0.75 : 1
                     }}
                   >
                     <div style={{ display: 'flex', gap: isMobile ? '12px' : '16px' }}>
@@ -535,6 +551,8 @@ const BookDetailModal = ({ book, onClose, onReserve }) => {
                           left: '8px',
                           background: isAvailable 
                             ? 'linear-gradient(135deg, #10B981, #34D399)'
+                            : isReserved
+                            ? 'linear-gradient(135deg, #8B5CF6, #A78BFA)'
                             : 'linear-gradient(135deg, #F59E0B, #FCD34D)',
                           color: 'white',
                           fontSize: isMobile ? '9px' : '10px',
@@ -545,7 +563,7 @@ const BookDetailModal = ({ book, onClose, onReserve }) => {
                           letterSpacing: '0.5px',
                           boxShadow: '0 2px 8px rgba(0, 0, 0, 0.2)'
                         }}>
-                          {isAvailable ? 'Available' : 'On Loan'}
+                          {isAvailable ? 'Available' : isReserved ? 'Reserved' : 'On Loan'}
                         </div>
                       </div>
 
@@ -561,12 +579,57 @@ const BookDetailModal = ({ book, onClose, onReserve }) => {
                         <div>
                           {/* Copy Number */}
                           <div style={{
-                            fontSize: isMobile ? '15px' : '17px',
-                            fontWeight: '700',
-                            color: '#0A7075',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
                             marginBottom: '8px'
                           }}>
-                            Copy #{copy.book_number}
+                            <div style={{
+                              fontSize: isMobile ? '15px' : '17px',
+                              fontWeight: '700',
+                              color: '#0A7075'
+                            }}>
+                              Copy #{copy.book_number}
+                            </div>
+
+                            {/* Visible inline Reserve CTA for each copy */}
+                            <button
+                              onClick={() => !isReserved && handleReserveCopy(copy.book_id)}
+                              disabled={isReserved || reservingCopyId === copy.book_id}
+                              style={{
+                                marginLeft: 'auto',
+                                background: isReserved
+                                  ? 'linear-gradient(135deg, #8B5CF6, #A78BFA)'
+                                  : reservingCopyId === copy.book_id
+                                  ? 'linear-gradient(135deg, #10B981, #34D399)'
+                                  : 'linear-gradient(135deg, #0C969C, #6BA3BE)',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '8px',
+                                fontSize: isMobile ? '12px' : '13px',
+                                fontWeight: '700',
+                                padding: isMobile ? '6px 10px' : '8px 12px',
+                                whiteSpace: 'nowrap',
+                                boxShadow: isReserved 
+                                  ? '0 4px 12px rgba(139, 92, 246, 0.3)'
+                                  : '0 4px 12px rgba(12, 150, 156, 0.2)',
+                                cursor: (isReserved || reservingCopyId === copy.book_id) ? 'not-allowed' : 'pointer',
+                                opacity: isReserved ? 0.8 : 1,
+                                transition: 'all 0.3s ease'
+                              }}
+                              onMouseEnter={(e) => {
+                                if (!isMobile && !isReserved && reservingCopyId !== copy.book_id) {
+                                  e.currentTarget.style.transform = 'translateY(-2px)';
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (!isMobile && !isReserved && reservingCopyId !== copy.book_id) {
+                                  e.currentTarget.style.transform = 'translateY(0)';
+                                }
+                              }}
+                            >
+                              {isReserved ? 'Reserved' : reservingCopyId === copy.book_id ? 'Reserved' : 'Reserve'}
+                            </button>
                           </div>
 
                           {/* Location */}

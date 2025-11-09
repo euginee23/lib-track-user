@@ -68,10 +68,10 @@ export const getGroupedResearches = async () => {
         // Research-specific properties
         department_id: paper.department_id,
         
-        // Status and availability (research papers are typically always "available" for reading)
-        status: 'available', // Most research papers are available for access
-        isAvailable: true,
-        canReserve: false, // Research papers typically don't get reserved like books
+        // Status and availability - use actual status from API
+        status: paper.status || 'Available', // Use actual status from database
+        isAvailable: paper.status?.toLowerCase() === 'available',
+        canReserve: paper.status?.toLowerCase() === 'available' || paper.status?.toLowerCase() === 'borrowed',
         
         // Ratings and reviews from API
         average_rating: paper.average_rating,
@@ -105,14 +105,25 @@ export const getAvailableResearches = async () => {
   try {
     const researches = await getGroupedResearches();
     
-    // Filter available research papers (most research papers are available for reading)
+    // Include research papers that are either available or reserved so users
+    // can still see reserved papers in the listing. Reserved papers will
+    // have their reserve action disabled in the UI.
     const availableResearches = researches
-      .filter(paper => paper.status?.toLowerCase() === 'available')
+      .filter(paper => {
+        const st = (paper.status || '').toLowerCase();
+        return st === 'available' || st === 'reserved';
+      })
       .map(paper => ({
         ...paper,
-        isAvailable: true,
-        canAccess: true, // Research papers can be accessed for reading
+        // Only truly available when status === 'available'
+        isAvailable: paper.status?.toLowerCase() === 'available',
+        // Mark reserved flag so UI can render a disabled "RESERVED" button
+        isReserved: paper.status?.toLowerCase() === 'reserved',
+        // Allow read access for both available and reserved papers
+        canAccess: true,
         accessType: 'read_only', // Research papers are typically read-only
+        // Only allow reserve action when status is available
+        canReserve: paper.status?.toLowerCase() === 'available',
         rating: paper.average_rating || paper.rating,
         totalReviews: paper.total_ratings || paper.totalReviews || 0,
         reviews: paper.reviews || []

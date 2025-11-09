@@ -1,7 +1,7 @@
 import React from 'react';
 import { FaArrowLeft, FaStar, FaFileAlt, FaMapMarkerAlt, FaCalendarAlt, FaEye } from 'react-icons/fa';
 
-const ResearchDetailModal = ({ research, onClose }) => {
+const ResearchDetailModal = ({ research, onClose, onReserve }) => {
   if (!research) return null;
   
   return (
@@ -498,35 +498,60 @@ const ResearchDetailModal = ({ research, onClose }) => {
         <div style={{
           display: 'flex',
           gap: '12px',
-          flexDirection: window.innerWidth < 768 ? 'column' : 'row'
+          justifyContent: 'center'
         }}>
-          <button style={{
-            flex: 1,
-            background: 'linear-gradient(135deg, #0C969C, #6BA3BE)',
-            border: 'none',
-            borderRadius: '12px',
-            padding: window.innerWidth < 768 ? '16px 24px' : '18px 32px',
-            color: 'white',
-            fontWeight: '700',
-            fontSize: window.innerWidth < 768 ? '15px' : '16px',
-            boxShadow: '0 4px 16px rgba(12, 150, 156, 0.3)',
-            transition: 'all 0.3s ease',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '8px'
-          }}
-          onMouseEnter={(e) => {
-            e.target.style.transform = 'translateY(-2px)';
-            e.target.style.boxShadow = '0 6px 20px rgba(12, 150, 156, 0.4)';
-          }}
-          onMouseLeave={(e) => {
-            e.target.style.transform = 'translateY(0)';
-            e.target.style.boxShadow = '0 4px 16px rgba(12, 150, 156, 0.3)';
-          }}>
-            <FaEye />
-            Read Full Paper
+          <button 
+            onClick={() => {
+              const isReserved = research.status?.toLowerCase() === 'reserved';
+              if (isReserved) return;
+              
+              const confirmReservation = window.confirm(
+                `Are you sure you want to reserve this research paper?\n\n${research.research_title}\n\nYour reservation will be pending for approval.`
+              );
+              
+              if (confirmReservation && onReserve) {
+                onReserve(research.research_paper_id || research.id);
+              }
+            }}
+            disabled={research.status?.toLowerCase() === 'reserved'}
+            title={research.status?.toLowerCase() === 'reserved' ? 'This research paper is already reserved by another user' : 'Reserve this research paper'}
+            style={{
+              background: research.status?.toLowerCase() === 'reserved'
+                ? 'linear-gradient(135deg, #8B5CF6, #A78BFA)'
+                : 'linear-gradient(135deg, #0C969C, #6BA3BE)',
+              border: 'none',
+              borderRadius: '12px',
+              padding: window.innerWidth < 768 ? '16px 40px' : '18px 48px',
+              color: 'white',
+              fontWeight: '700',
+              fontSize: window.innerWidth < 768 ? '15px' : '16px',
+              boxShadow: research.status?.toLowerCase() === 'reserved'
+                ? '0 4px 16px rgba(139, 92, 246, 0.3)'
+                : '0 4px 16px rgba(12, 150, 156, 0.3)',
+              transition: 'all 0.3s ease',
+              cursor: research.status?.toLowerCase() === 'reserved' ? 'not-allowed' : 'pointer',
+              opacity: research.status?.toLowerCase() === 'reserved' ? 0.75 : 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              position: 'relative'
+            }}
+            onMouseEnter={(e) => {
+              if (research.status?.toLowerCase() !== 'reserved') {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 6px 20px rgba(12, 150, 156, 0.4)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (research.status?.toLowerCase() !== 'reserved') {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 4px 16px rgba(12, 150, 156, 0.3)';
+              }
+            }}
+          >
+            <i className="fas fa-bookmark" style={{ fontSize: '14px' }}></i>
+            {research.status?.toLowerCase() === 'reserved' ? 'This Paper is Already Reserved' : 'Reserve This Paper'}
           </button>
         </div>
       </div>

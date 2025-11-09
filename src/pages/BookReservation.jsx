@@ -3,6 +3,8 @@ import { FaBook, FaClock, FaCalendarAlt, FaEnvelope, FaBell, FaTrash, FaEye, FaS
 import { toast } from 'react-toastify';
 import { getReservableBooks, searchBooks, getCategories } from '../../api/bookReservation/getBooks';
 import { getAvailableResearches, searchResearches, getResearchDepartments } from '../../api/bookReservation/getResearches';
+import { createBookReservation, createResearchReservation, deleteReservation } from '../../api/bookReservation/postReservation';
+import { getUserReservations } from '../../api/bookReservation/getReservation';
 import BookDetailModal from '../modals/BookDetailModal';
 import ResearchDetailModal from '../modals/ResearchDetailModal';
 
@@ -41,17 +43,21 @@ function BookReservation() {
   }, []);
 
 
-  // Load data on component mount
-    useEffect(() => {
-      // when the Available Books tab is active, load books and categories
-      if (activeTab === 'available') {
-        loadBooksData();
-        loadCategoriesData();
-      } else if (activeTab === 'researches') {
-      loadResearchesData();
-      loadDepartmentsData();
-    }
-  }, [activeTab]);
+  // Load all data on initial component mount
+  useEffect(() => {
+    // Load all data once on component mount for better UX
+    const loadAllData = async () => {
+      await Promise.all([
+        loadBooksData(),
+        loadCategoriesData(),
+        loadResearchesData(),
+        loadDepartmentsData(),
+        loadReservationsData()
+      ]);
+    };
+    
+    loadAllData();
+  }, []); // Empty dependency array - only run once on mount
 
   // Function to load books data from API
   const loadBooksData = async () => {
@@ -96,24 +102,6 @@ function BookReservation() {
       }));
 
       setAvailableBooks(transformedBooks);
-
-      // Mock reservations data (this would be fetched from a user reservations API)
-      setMyReservations([
-        {
-          id: 1,
-          bookId: transformedBooks[0]?.id || 1,
-          title: transformedBooks[0]?.title || "Sample Book",
-          author: transformedBooks[0]?.author || "Sample Author",
-          isbn: transformedBooks[0]?.isbn || "123456789",
-          reservationDate: "2025-11-01",
-          expectedAvailableDate: "2025-11-15",
-          position: 2,
-          status: "waiting",
-          claimDeadline: "2025-11-17",
-          notificationSent: false,
-          coverImage: transformedBooks[0]?.coverImage || "https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=400&h=600&fit=crop&crop=entropy&auto=format&fm=webp&q=80"
-        }
-      ]);
 
     } catch (err) {
       console.error('Error loading books:', err);
@@ -165,6 +153,8 @@ function BookReservation() {
         
         // Research-specific properties
         type: 'research_paper',
+  // keep original status from API so modals and buttons can check it
+  status: paper.status,
         isAvailable: paper.isAvailable,
         canAccess: paper.canAccess,
         accessType: 'read_only',
@@ -173,7 +163,10 @@ function BookReservation() {
         rating: paper.rating || paper.average_rating || null,
         totalReviews: paper.totalReviews || paper.total_ratings || 0,
         reviews: paper.reviews || [],
-        canReserve: false, // Research papers typically don't get reserved
+        // Allow reserve state from API service. Reserved papers will have canReserve=false
+        canReserve: paper.canReserve,
+        // Flag to indicate paper is reserved so UI can show "RESERVED"
+        isReserved: paper.isReserved || false,
         
         // For compatibility with existing UI
         batch_registration_key: `RESEARCH_${paper.research_paper_id}`,
@@ -203,44 +196,199 @@ function BookReservation() {
     }
   };
 
-  const handleReserveBook = (bookId) => {
-    // In real implementation, this would call an API
-    const book = availableBooks.find(b => b.id === bookId);
-    if (book && book.canReserve) {
-      const newReservation = {
-        id: Date.now(),
-        bookId: book.id,
-        title: book.title,
-        author: book.author,
-        isbn: book.isbn,
-        reservationDate: new Date().toISOString().split('T')[0],
-        expectedAvailableDate: book.expectedReturnDate,
-        position: book.reservationCount + 1,
-        status: 'waiting',
-        claimDeadline: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        notificationSent: false,
-        rating: book.rating,
-        coverImage: book.coverImage
-      };
+  // Function to load user's reservations from API
+  const loadReservationsData = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Get user_id from localStorage or context (adjust based on your auth implementation)
+      const userData = JSON.parse(localStorage.getItem('user') || '{}');
+      const userId = userData.user_id || userData.id;
+
+      if (!userId) {
+        toast.error('User not logged in');
+        setMyReservations([]);
+        return;
+      }
+
+      const response = await getUserReservations(userId);
       
-      setMyReservations(prev => [...prev, newReservation]);
-      
-      // Update the book's reservation count
-      setAvailableBooks(prev => 
-        prev.map(b => 
-          b.id === bookId 
-            ? { ...b, reservationCount: b.reservationCount + 1 }
-            : b
-        )
-      );
-      
-      // Close detail view
-      setSelectedBook(null);
+      if (!response.success) {
+        throw new Error(response.message || 'Failed to fetch reservations');
+      }
+
+      // Transform reservations data with proper type handling
+      const transformedReservations = (response.data || []).map(reservation => {
+        const isBook = reservation.reservation_type === 'book';
+        const isResearch = reservation.reservation_type === 'research_paper';
+        
+        // Handle book_cover - it's now a full URL from the backend
+        let coverImage = null;
+        if (isBook && reservation.book_cover) {
+          // Check if it's a full URL (starts with http:// or https://)
+          if (typeof reservation.book_cover === 'string' && reservation.book_cover.startsWith('http')) {
+            coverImage = reservation.book_cover;
+          } else if (reservation.book_cover.type === 'Buffer' && reservation.book_cover.data) {
+            // Fallback for Buffer objects (if backend ever returns buffers)
+            const base64String = btoa(
+              String.fromCharCode(...new Uint8Array(reservation.book_cover.data))
+            );
+            coverImage = `data:image/jpeg;base64,${base64String}`;
+          } else if (typeof reservation.book_cover === 'string') {
+            // If already a base64 string
+            coverImage = reservation.book_cover.startsWith('data:') 
+              ? reservation.book_cover 
+              : `data:image/jpeg;base64,${reservation.book_cover}`;
+          }
+        }
+
+        return {
+          id: reservation.reservation_id,
+          reservationId: reservation.reservation_id,
+          bookId: reservation.book_id,
+          researchId: reservation.research_paper_id,
+          title: reservation.book_title || reservation.research_title,
+          author: reservation.author || reservation.authors,
+          genre: reservation.genre || reservation.department,
+          isbn: reservation.batch_registration_key || null,
+          bookNumber: reservation.book_number,
+          yearPublication: reservation.year_publication,
+          reservationDate: reservation.updated_at ? new Date(reservation.updated_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : null,
+          status: reservation.status?.toLowerCase() === 'pending' ? 'waiting' : 
+                  reservation.status?.toLowerCase() === 'approved' ? 'ready' : 'expired',
+          reason: reservation.reason,
+          coverImage: coverImage,
+          reservation_type: reservation.reservation_type,
+          position: 1, // You might calculate this based on pending reservations
+          claimDeadline: reservation.status?.toLowerCase() === 'approved' 
+            ? new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+            : null
+        };
+      });
+
+      setMyReservations(transformedReservations);
+
+    } catch (err) {
+      console.error('Error loading reservations:', err);
+      setError(err.message);
+      toast.error('Failed to load reservations. Please try again.');
+      setMyReservations([]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleCancelReservation = (reservationId) => {
-    setMyReservations(prev => prev.filter(r => r.id !== reservationId));
+  const handleReserveBook = async (copyId) => {
+    try {
+      // Get user_id from localStorage or context
+      const userData = JSON.parse(localStorage.getItem('user') || '{}');
+      const userId = userData.user_id || userData.id;
+
+      if (!userId) {
+        toast.error('Please login to reserve books');
+        return;
+      }
+
+      if (!copyId) {
+        toast.error('Invalid book copy');
+        return;
+      }
+
+      setLoading(true);
+
+      const response = await createBookReservation({
+        book_id: copyId,
+        user_id: userId
+      });
+
+      if (response.success) {
+        toast.success('Book copy reserved successfully! Pending approval.');
+        
+        // Reload books and reservations
+        await loadBooksData();
+        await loadReservationsData();
+        
+        // Close detail view
+        setSelectedBook(null);
+      } else {
+        throw new Error(response.message || 'Failed to reserve book');
+      }
+
+    } catch (err) {
+      console.error('Error reserving book:', err);
+      toast.error(err.message || 'Failed to reserve book');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReserveResearch = async (researchId) => {
+    try {
+      // Get user_id from localStorage or context
+      const userData = JSON.parse(localStorage.getItem('user') || '{}');
+      const userId = userData.user_id || userData.id;
+
+      if (!userId) {
+        toast.error('Please login to reserve research papers');
+        return;
+      }
+
+      setLoading(true);
+
+      const response = await createResearchReservation({
+        research_paper_id: researchId,
+        user_id: userId
+      });
+
+      if (response.success) {
+        toast.success('Research paper reserved successfully! Pending approval.');
+        
+        // Reload research papers and reservations
+        await loadResearchesData();
+        await loadReservationsData();
+        
+        // Close detail view
+        setSelectedResearch(null);
+      } else {
+        throw new Error(response.message || 'Failed to reserve research paper');
+      }
+
+    } catch (err) {
+      console.error('Error reserving research paper:', err);
+      toast.error(err.message || 'Failed to reserve research paper');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancelReservation = async (reservationId) => {
+    if (!window.confirm('Are you sure you want to cancel this reservation?')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const response = await deleteReservation(reservationId);
+
+      if (response.success) {
+        toast.success('Reservation cancelled successfully');
+        
+        // Reload reservations
+        await loadReservationsData();
+        await loadBooksData();
+        await loadResearchesData();
+      } else {
+        throw new Error(response.message || 'Failed to cancel reservation');
+      }
+
+    } catch (err) {
+      console.error('Error cancelling reservation:', err);
+      toast.error(err.message || 'Failed to cancel reservation');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getStatusBadge = (status) => {
@@ -382,7 +530,8 @@ function BookReservation() {
       {selectedResearch && (
         <ResearchDetailModal 
           research={selectedResearch} 
-          onClose={() => setSelectedResearch(null)} 
+          onClose={() => setSelectedResearch(null)}
+          onReserve={handleReserveResearch}
         />
       )}
 
@@ -1545,199 +1694,332 @@ function BookReservation() {
                 </div>
               ) : (
                 <div className="row g-3 g-lg-4">
-                  {myReservations.map(reservation => (
-                    <div key={reservation.id} className="col-12 col-lg-6">
-                      <div style={{
-                        background: 'rgba(255, 255, 255, 0.95)',
-                        backdropFilter: 'blur(20px)',
-                        borderRadius: window.innerWidth < 768 ? '16px' : '20px',
-                        overflow: 'hidden',
-                        boxShadow: '0 8px 32px rgba(12, 150, 156, 0.15)',
-                        border: '1px solid rgba(255, 255, 255, 0.2)',
-                        transition: 'all 0.3s ease'
-                      }}
-                      onMouseEnter={(e) => {
-                        if (window.innerWidth >= 768) {
-                          e.currentTarget.style.boxShadow = '0 20px 40px rgba(12, 150, 156, 0.25)';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (window.innerWidth >= 768) {
-                          e.currentTarget.style.boxShadow = '0 8px 32px rgba(12, 150, 156, 0.15)';
-                        }
-                      }}>
-                        <div style={{ display: 'flex', gap: window.innerWidth < 768 ? '12px' : '20px' }}>
-                          {/* Book Image */}
-                          <img
-                            src={reservation.coverImage}
-                            alt={reservation.title}
-                            style={{
-                              width: window.innerWidth < 768 ? '100px' : '140px',
-                              height: window.innerWidth < 768 ? '130px' : '180px',
-                              objectFit: 'cover',
-                              flexShrink: 0
-                            }}
-                          />
-                          
-                          {/* Reservation Info */}
-                          <div style={{ 
-                            padding: window.innerWidth < 768 ? '16px 12px 16px 0' : '24px 24px 24px 0',
-                            flex: 1,
-                            display: 'flex',
-                            flexDirection: 'column'
+                  {myReservations.map(reservation => {
+                    const isBook = reservation.reservation_type === 'book';
+                    const isResearch = reservation.reservation_type === 'research_paper';
+                    
+                    return (
+                      <div key={reservation.id} className="col-12 col-lg-6">
+                        <div style={{
+                          background: 'rgba(255, 255, 255, 0.95)',
+                          backdropFilter: 'blur(20px)',
+                          borderRadius: window.innerWidth < 768 ? '16px' : '20px',
+                          overflow: 'hidden',
+                          boxShadow: '0 8px 32px rgba(12, 150, 156, 0.15)',
+                          border: '1px solid rgba(255, 255, 255, 0.2)',
+                          transition: 'all 0.3s ease',
+                          position: 'relative'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (window.innerWidth >= 768) {
+                            e.currentTarget.style.boxShadow = '0 20px 40px rgba(12, 150, 156, 0.25)';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (window.innerWidth >= 768) {
+                            e.currentTarget.style.boxShadow = '0 8px 32px rgba(12, 150, 156, 0.15)';
+                          }
+                        }}>
+                          {/* Type Badge */}
+                          <div style={{
+                            position: 'absolute',
+                            top: '12px',
+                            right: '12px',
+                            background: isBook 
+                              ? 'linear-gradient(135deg, #3B82F6, #60A5FA)' 
+                              : 'linear-gradient(135deg, #8B5CF6, #A78BFA)',
+                            color: 'white',
+                            fontSize: window.innerWidth < 768 ? '9px' : '11px',
+                            fontWeight: '700',
+                            padding: window.innerWidth < 768 ? '4px 10px' : '6px 12px',
+                            borderRadius: '6px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            zIndex: 2,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px',
+                            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)'
                           }}>
-                            {/* Status Badge */}
-                            <div className="mb-3">
-                              {reservation.status === 'ready' ? (
-                                <span style={{
-                                  background: 'linear-gradient(135deg, #10B981, #34D399)',
-                                  color: 'white',
-                                  fontSize: window.innerWidth < 768 ? '10px' : '12px',
-                                  fontWeight: '600',
-                                  padding: window.innerWidth < 768 ? '6px 12px' : '8px 16px',
-                                  borderRadius: '8px',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '6px'
-                                }}>
-                                  <FaCheckCircle size={window.innerWidth < 768 ? 10 : 12} />
-                                  Ready to Claim
-                                </span>
-                              ) : (
-                                <span style={{
-                                  background: 'linear-gradient(135deg, #F59E0B, #FCD34D)',
-                                  color: 'white',
-                                  fontSize: window.innerWidth < 768 ? '10px' : '12px',
-                                  fontWeight: '600',
-                                  padding: window.innerWidth < 768 ? '6px 12px' : '8px 16px',
-                                  borderRadius: '8px',
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: '6px'
-                                }}>
-                                  <FaClock size={window.innerWidth < 768 ? 10 : 12} />
-                                  In Queue
-                                </span>
-                              )}
-                            </div>
+                            {isBook ? <FaBook size={window.innerWidth < 768 ? 8 : 10} /> : <FaFileAlt size={window.innerWidth < 768 ? 8 : 10} />}
+                            {isBook ? 'Book' : 'Research'}
+                          </div>
 
-                            <h5 style={{ 
-                              fontSize: window.innerWidth < 768 ? '14px' : '18px',
-                              fontWeight: '700',
-                              color: '#0A7075',
-                              lineHeight: '1.4',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              display: '-webkit-box',
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: 'vertical',
-                              marginBottom: '6px'
-                            }}>
-                              {reservation.title}
-                            </h5>
-                            <p style={{ 
-                              color: '#6BA3BE',
-                              fontSize: window.innerWidth < 768 ? '12px' : '15px',
-                              marginBottom: window.innerWidth < 768 ? '12px' : '16px',
-                              fontWeight: '500'
-                            }}>
-                              by {reservation.author}
-                            </p>
-
-                            <div className={`row g-${window.innerWidth < 768 ? '2' : '3'} mb-3`}>
-                              <div className="col-6">
-                                <small style={{ 
-                                  color: '#6BA3BE', 
-                                  fontSize: window.innerWidth < 768 ? '10px' : '12px',
-                                  display: 'block',
-                                  fontWeight: '500'
-                                }}>
-                                  Queue Position
-                                </small>
-                                <span style={{ 
-                                  fontSize: window.innerWidth < 768 ? '14px' : '16px',
-                                  fontWeight: '700',
-                                  color: '#0C969C'
-                                }}>
-                                  #{reservation.position}
-                                </span>
-                              </div>
-                              <div className="col-6">
-                                <small style={{ 
-                                  color: '#6BA3BE', 
-                                  fontSize: window.innerWidth < 768 ? '10px' : '12px',
-                                  display: 'block',
-                                  fontWeight: '500'
-                                }}>
-                                  Reserved On
-                                </small>
-                                <span style={{ 
-                                  fontSize: window.innerWidth < 768 ? '12px' : '14px',
-                                  fontWeight: '700',
-                                  color: '#0C969C'
-                                }}>
-                                  {reservation.reservationDate}
-                                </span>
-                              </div>
-                            </div>
-
-                            {reservation.status === 'ready' && (
-                              <div className="mb-3">
-                                <small style={{ 
-                                  color: '#EF4444', 
-                                  fontSize: window.innerWidth < 768 ? '10px' : '12px',
-                                  display: 'block',
-                                  fontWeight: '600'
-                                }}>
-                                  Claim Deadline: {reservation.claimDeadline}
-                                </small>
+                          <div style={{ display: 'flex', gap: window.innerWidth < 768 ? '12px' : '20px' }}>
+                            {/* Book Cover or Research Paper Icon */}
+                            {isBook && reservation.coverImage ? (
+                              <img
+                                src={reservation.coverImage}
+                                alt={reservation.title}
+                                style={{
+                                  width: window.innerWidth < 768 ? '100px' : '140px',
+                                  height: window.innerWidth < 768 ? '140px' : '200px',
+                                  objectFit: 'cover',
+                                  flexShrink: 0
+                                }}
+                              />
+                            ) : (
+                              <div style={{
+                                width: window.innerWidth < 768 ? '100px' : '140px',
+                                height: window.innerWidth < 768 ? '140px' : '200px',
+                                flexShrink: 0,
+                                background: isResearch 
+                                  ? 'linear-gradient(135deg, #8B5CF6, #A78BFA)' 
+                                  : 'linear-gradient(135deg, #6BA3BE, #0C969C)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: window.innerWidth < 768 ? '8px' : '12px',
+                                padding: '16px'
+                              }}>
+                                {isResearch ? (
+                                  <>
+                                    <FaFileAlt size={window.innerWidth < 768 ? 32 : 48} style={{ color: 'white', opacity: 0.9 }} />
+                                    <div style={{
+                                      color: 'white',
+                                      fontSize: window.innerWidth < 768 ? '9px' : '11px',
+                                      fontWeight: '700',
+                                      textAlign: 'center',
+                                      opacity: 0.9,
+                                      textTransform: 'uppercase',
+                                      letterSpacing: '1px'
+                                    }}>
+                                      Research<br/>Paper
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <FaBook size={window.innerWidth < 768 ? 32 : 48} style={{ color: 'white', opacity: 0.9 }} />
+                                    <div style={{
+                                      color: 'white',
+                                      fontSize: window.innerWidth < 768 ? '9px' : '11px',
+                                      fontWeight: '700',
+                                      textAlign: 'center',
+                                      opacity: 0.9,
+                                      textTransform: 'uppercase',
+                                      letterSpacing: '1px'
+                                    }}>
+                                      No Cover<br/>Available
+                                    </div>
+                                  </>
+                                )}
                               </div>
                             )}
-
-                            <div className={`d-flex gap-${window.innerWidth < 768 ? '2' : '3'} mt-auto`}>
-                              {reservation.status === 'ready' && (
-                                <button 
-                                  style={{
-                                    flex: 1,
+                            
+                            {/* Reservation Info */}
+                            <div style={{ 
+                              padding: window.innerWidth < 768 ? '16px 12px 16px 0' : '24px 24px 24px 0',
+                              flex: 1,
+                              display: 'flex',
+                              flexDirection: 'column'
+                            }}>
+                              {/* Status Badge */}
+                              <div className="mb-2">
+                                {reservation.status === 'ready' ? (
+                                  <span style={{
                                     background: 'linear-gradient(135deg, #10B981, #34D399)',
+                                    color: 'white',
+                                    fontSize: window.innerWidth < 768 ? '10px' : '12px',
+                                    fontWeight: '600',
+                                    padding: window.innerWidth < 768 ? '6px 12px' : '8px 16px',
+                                    borderRadius: '8px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                  }}>
+                                    <FaCheckCircle size={window.innerWidth < 768 ? 10 : 12} />
+                                    Ready to Claim
+                                  </span>
+                                ) : (
+                                  <span style={{
+                                    background: 'linear-gradient(135deg, #F59E0B, #FCD34D)',
+                                    color: 'white',
+                                    fontSize: window.innerWidth < 768 ? '10px' : '12px',
+                                    fontWeight: '600',
+                                    padding: window.innerWidth < 768 ? '6px 12px' : '8px 16px',
+                                    borderRadius: '8px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '6px'
+                                  }}>
+                                    <FaClock size={window.innerWidth < 768 ? 10 : 12} />
+                                    Pending Approval
+                                  </span>
+                                )}
+                              </div>
+
+                              <h5 style={{ 
+                                fontSize: window.innerWidth < 768 ? '14px' : '17px',
+                                fontWeight: '700',
+                                color: '#0A7075',
+                                lineHeight: '1.4',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                marginBottom: '6px'
+                              }}>
+                                {reservation.title}
+                              </h5>
+                              <p style={{ 
+                                color: '#6BA3BE',
+                                fontSize: window.innerWidth < 768 ? '11px' : '14px',
+                                marginBottom: window.innerWidth < 768 ? '8px' : '12px',
+                                fontWeight: '500',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                display: '-webkit-box',
+                                WebkitLineClamp: 1,
+                                WebkitBoxOrient: 'vertical'
+                              }}>
+                                by {reservation.author}
+                              </p>
+
+                              {/* Genre/Department and Additional Info */}
+                              <div className="mb-2">
+                                <span style={{
+                                  background: 'rgba(12, 150, 156, 0.1)',
+                                  color: '#0C969C',
+                                  fontSize: window.innerWidth < 768 ? '9px' : '11px',
+                                  fontWeight: '600',
+                                  padding: window.innerWidth < 768 ? '4px 8px' : '5px 10px',
+                                  borderRadius: '6px',
+                                  display: 'inline-block'
+                                }}>
+                                  {reservation.genre || 'General'}
+                                </span>
+                                {isBook && reservation.bookNumber && (
+                                  <span style={{
+                                    color: '#6BA3BE',
+                                    fontSize: window.innerWidth < 768 ? '9px' : '11px',
+                                    fontWeight: '600',
+                                    marginLeft: '8px'
+                                  }}>
+                                    #{reservation.bookNumber}
+                                  </span>
+                                )}
+                                {isResearch && reservation.yearPublication && (
+                                  <span style={{
+                                    color: '#6BA3BE',
+                                    fontSize: window.innerWidth < 768 ? '9px' : '11px',
+                                    fontWeight: '600',
+                                    marginLeft: '8px'
+                                  }}>
+                                    {reservation.yearPublication}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className={`row g-${window.innerWidth < 768 ? '2' : '3'} mb-3`}>
+                                <div className="col-6">
+                                  <small style={{ 
+                                    color: '#6BA3BE', 
+                                    fontSize: window.innerWidth < 768 ? '9px' : '11px',
+                                    display: 'block',
+                                    fontWeight: '500'
+                                  }}>
+                                    Queue Position
+                                  </small>
+                                  <span style={{ 
+                                    fontSize: window.innerWidth < 768 ? '13px' : '16px',
+                                    fontWeight: '700',
+                                    color: '#0C969C'
+                                  }}>
+                                    #{reservation.position}
+                                  </span>
+                                </div>
+                                <div className="col-6">
+                                  <small style={{ 
+                                    color: '#6BA3BE', 
+                                    fontSize: window.innerWidth < 768 ? '9px' : '11px',
+                                    display: 'block',
+                                    fontWeight: '500'
+                                  }}>
+                                    Reserved On
+                                  </small>
+                                  <span style={{ 
+                                    fontSize: window.innerWidth < 768 ? '10px' : '13px',
+                                    fontWeight: '700',
+                                    color: '#0C969C'
+                                  }}>
+                                    {reservation.reservationDate}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {reservation.status === 'ready' && reservation.claimDeadline && (
+                                <div className="mb-3">
+                                  <small style={{ 
+                                    color: '#EF4444', 
+                                    fontSize: window.innerWidth < 768 ? '10px' : '12px',
+                                    display: 'block',
+                                    fontWeight: '600'
+                                  }}>
+                                    Claim Deadline: {reservation.claimDeadline}
+                                  </small>
+                                </div>
+                              )}
+
+                              <div className={`d-flex gap-${window.innerWidth < 768 ? '2' : '3'} mt-auto`}>
+                                {reservation.status === 'ready' && (
+                                  <button 
+                                    style={{
+                                      flex: 1,
+                                      background: 'linear-gradient(135deg, #10B981, #34D399)',
+                                      color: 'white',
+                                      border: 'none',
+                                      borderRadius: '12px',
+                                      fontSize: window.innerWidth < 768 ? '11px' : '14px',
+                                      fontWeight: '600',
+                                      padding: window.innerWidth < 768 ? '8px' : '12px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      gap: window.innerWidth < 768 ? '4px' : '8px',
+                                      boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
+                                      cursor: 'pointer',
+                                      transition: 'transform 0.2s'
+                                    }}
+                                    onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                                    onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                                  >
+                                    <FaCheckCircle size={window.innerWidth < 768 ? 11 : 14} />
+                                    {window.innerWidth < 768 ? 'Claim' : 'Claim Now'}
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => handleCancelReservation(reservation.id)}
+                                  style={{
+                                    background: 'linear-gradient(135deg, #EF4444, #F87171)',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '12px',
-                                    fontSize: window.innerWidth < 768 ? '12px' : '14px',
+                                    fontSize: window.innerWidth < 768 ? '11px' : '14px',
                                     fontWeight: '600',
-                                    padding: window.innerWidth < 768 ? '8px' : '12px',
+                                    padding: window.innerWidth < 768 ? '8px 12px' : '12px 16px',
+                                    boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)',
+                                    cursor: 'pointer',
+                                    transition: 'transform 0.2s',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: window.innerWidth < 768 ? '4px' : '8px',
-                                    boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+                                    gap: window.innerWidth < 768 ? '4px' : '6px'
                                   }}
+                                  onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                                  onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                                  title="Cancel Reservation"
                                 >
-                                  <FaCheckCircle size={window.innerWidth < 768 ? 12 : 14} />
-                                  {window.innerWidth < 768 ? 'Claim' : 'Claim Now'}
+                                  <FaTimes size={window.innerWidth < 768 ? 11 : 14} />
+                                  {window.innerWidth >= 768 && 'Cancel'}
                                 </button>
-                              )}
-                              <button
-                                onClick={() => handleCancelReservation(reservation.id)}
-                                style={{
-                                  background: 'linear-gradient(135deg, #EF4444, #F87171)',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: '12px',
-                                  fontSize: window.innerWidth < 768 ? '12px' : '14px',
-                                  fontWeight: '600',
-                                  padding: window.innerWidth < 768 ? '8px 12px' : '12px 16px',
-                                  boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)'
-                                }}
-                              >
-                                <FaTimes />
-                              </button>
+                              </div>
                             </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
