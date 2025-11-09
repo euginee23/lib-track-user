@@ -347,7 +347,8 @@ const ResearchDetailModal = ({ research, onClose }) => {
           {/* Abstract Section */}
           <div style={{
             paddingTop: window.innerWidth < 768 ? '20px' : '28px',
-            borderTop: '2px solid rgba(12, 150, 156, 0.1)'
+            borderTop: '2px solid rgba(12, 150, 156, 0.1)',
+            marginBottom: window.innerWidth < 768 ? '20px' : '28px'
           }}>
             <h5 style={{ 
               fontWeight: '700',
@@ -372,6 +373,125 @@ const ResearchDetailModal = ({ research, onClose }) => {
               {research.research_abstract || 'Abstract not available for this research paper.'}
             </p>
           </div>
+
+          {/* Reviews Section */}
+          {research.reviews && research.reviews.length > 0 && (
+            <div style={{
+              paddingTop: window.innerWidth < 768 ? '20px' : '28px',
+              borderTop: '2px solid rgba(12, 150, 156, 0.1)'
+            }}>
+              <h5 style={{ 
+                fontWeight: '700',
+                marginBottom: '16px',
+                color: '#0A7075',
+                fontSize: window.innerWidth < 768 ? '18px' : '20px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <FaStar style={{ color: '#FFB800' }} />
+                User Reviews ({research.totalReviews || research.reviews.length})
+              </h5>
+
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: window.innerWidth < 768 ? '12px' : '16px',
+                maxHeight: window.innerWidth < 768 ? '320px' : '450px',
+                overflowY: 'auto',
+                paddingRight: '8px'
+              }}>
+                {research.reviews.map((review) => (
+                  <div
+                    key={review.rating_id}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.95)',
+                      borderRadius: window.innerWidth < 768 ? '12px' : '14px',
+                      padding: window.innerWidth < 768 ? '16px' : '20px',
+                      border: '1px solid rgba(12, 150, 156, 0.1)',
+                      boxShadow: '0 2px 8px rgba(0, 0, 0, 0.08)',
+                      transition: 'all 0.3s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      if (window.innerWidth >= 768) {
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(12, 150, 156, 0.15)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (window.innerWidth >= 768) {
+                        e.currentTarget.style.boxShadow = '0 2px 8px rgba(0, 0, 0, 0.08)';
+                      }
+                    }}
+                  >
+                    {/* Review Header */}
+                    <div style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'flex-start',
+                      marginBottom: '12px',
+                      gap: '12px'
+                    }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontSize: window.innerWidth < 768 ? '14px' : '16px',
+                          fontWeight: '700',
+                          color: '#0A7075',
+                          marginBottom: '4px',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {review.user_name}
+                        </div>
+                        <div style={{
+                          fontSize: window.innerWidth < 768 ? '11px' : '12px',
+                          color: '#6BA3BE',
+                          fontWeight: '500'
+                        }}>
+                          {new Date(review.created_at).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric'
+                          })}
+                        </div>
+                      </div>
+                      
+                      {/* Star Rating */}
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        flexShrink: 0
+                      }}>
+                        {[...Array(5)].map((_, i) => (
+                          <FaStar
+                            key={i}
+                            size={window.innerWidth < 768 ? 12 : 14}
+                            style={{
+                              color: i < review.star_rating ? '#FFB800' : '#E5E7EB'
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Review Comment */}
+                    {review.comment && (
+                      <p style={{
+                        fontSize: window.innerWidth < 768 ? '13px' : '14px',
+                        color: '#0A7075',
+                        lineHeight: '1.6',
+                        marginBottom: 0,
+                        wordWrap: 'break-word'
+                      }}>
+                        {review.comment}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Action Buttons */}

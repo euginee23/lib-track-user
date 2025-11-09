@@ -73,10 +73,15 @@ export const getGroupedResearches = async () => {
         isAvailable: true,
         canReserve: false, // Research papers typically don't get reserved like books
         
+        // Ratings and reviews from API
+        average_rating: paper.average_rating,
+        rating: paper.average_rating,
+        total_ratings: paper.total_ratings,
+        totalReviews: paper.total_ratings,
+        reviews: paper.reviews || [],
+        
         // Mock data for consistency with book interface
         coverImage: qrCodeUrl || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=600&fit=crop&crop=entropy&auto=format&fm=webp&q=80",
-        rating: 4.0 + Math.random() * 1.0, // Mock rating between 4.0-5.0
-        totalReviews: Math.floor(Math.random() * 100) + 10, // Mock review count
         
         // Research-specific display
         type: 'research_paper'
@@ -107,7 +112,10 @@ export const getAvailableResearches = async () => {
         ...paper,
         isAvailable: true,
         canAccess: true, // Research papers can be accessed for reading
-        accessType: 'read_only' // Research papers are typically read-only
+        accessType: 'read_only', // Research papers are typically read-only
+        rating: paper.average_rating || paper.rating,
+        totalReviews: paper.total_ratings || paper.totalReviews || 0,
+        reviews: paper.reviews || []
       }));
 
     return availableResearches;
@@ -153,7 +161,12 @@ export const getResearchById = async (researchId) => {
       location: `${paper.shelf_number ? `Shelf ${paper.shelf_number}` : ''}${paper.shelf_column ? `, Column ${paper.shelf_column}` : ''}${paper.shelf_row ? `, Row ${paper.shelf_row}` : ''}`.replace(/^, /, '').trim() || 'Location not specified',
       type: 'research_paper',
       isAvailable: true,
-      canAccess: true
+      canAccess: true,
+      average_rating: paper.average_rating,
+      rating: paper.average_rating,
+      total_ratings: paper.total_ratings,
+      totalReviews: paper.total_ratings,
+      reviews: paper.reviews || []
     };
 
   } catch (error) {

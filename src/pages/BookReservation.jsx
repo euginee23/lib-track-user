@@ -169,9 +169,10 @@ function BookReservation() {
         canAccess: paper.canAccess,
         accessType: 'read_only',
         
-        // Mock data for UI consistency
-        rating: paper.rating || 4.0,
-        totalReviews: paper.totalReviews || 50,
+        // Real ratings and reviews from API
+        rating: paper.rating || paper.average_rating || null,
+        totalReviews: paper.totalReviews || paper.total_ratings || 0,
+        reviews: paper.reviews || [],
         canReserve: false, // Research papers typically don't get reserved
         
         // For compatibility with existing UI
