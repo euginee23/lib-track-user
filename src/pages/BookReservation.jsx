@@ -1,15 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { FaBook, FaClock, FaCalendarAlt, FaEnvelope, FaBell, FaTrash, FaEye, FaSearch, FaFilter, FaArrowLeft, FaStar, FaMapMarkerAlt, FaUsers, FaCheckCircle, FaTimes, FaChevronRight, FaHeart, FaBookmark } from 'react-icons/fa';
+import { FaBook, FaClock, FaCalendarAlt, FaEnvelope, FaBell, FaTrash, FaEye, FaSearch, FaFilter, FaArrowLeft, FaStar, FaMapMarkerAlt, FaUsers, FaCheckCircle, FaTimes, FaChevronRight, FaHeart, FaBookmark, FaFileAlt } from 'react-icons/fa';
+import { toast } from 'react-toastify';
+import { getReservableBooks, searchBooks, getCategories } from '../../api/bookReservation/getBooks';
+import { getAvailableResearches, searchResearches, getResearchDepartments } from '../../api/bookReservation/getResearches';
+import BookDetailModal from '../modals/BookDetailModal';
+import ResearchDetailModal from '../modals/ResearchDetailModal';
 
 function BookReservation() {
+  // default to the "Available Books" tab when opening the page
   const [activeTab, setActiveTab] = useState('available');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
+  const [filterDepartment, setFilterDepartment] = useState('all');
   const [myReservations, setMyReservations] = useState([]);
   const [availableBooks, setAvailableBooks] = useState([]);
+  const [availableResearches, setAvailableResearches] = useState([]);
+  const [categories, setCategories] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [selectedBook, setSelectedBook] = useState(null);
+  const [selectedResearch, setSelectedResearch] = useState(null);
   const [isMobile, setIsMobile] = useState(false);
+  
+  // Pagination state
+  const [currentPageBooks, setCurrentPageBooks] = useState(1);
+  const [currentPageResearch, setCurrentPageResearch] = useState(1);
+  const itemsPerPage = isMobile ? 6 : 9; 
 
   // Check if device is mobile
   useEffect(() => {
@@ -155,10 +172,166 @@ function BookReservation() {
     }
   ];
 
-  useEffect(() => {
-    setAvailableBooks(mockAvailableBooks);
-    setMyReservations(mockReservations);
-  }, []);
+  // Load data on component mount
+    useEffect(() => {
+      // when the Available Books tab is active, load books and categories
+      if (activeTab === 'available') {
+        loadBooksData();
+        loadCategoriesData();
+      } else if (activeTab === 'researches') {
+      loadResearchesData();
+      loadDepartmentsData();
+    }
+  }, [activeTab]);
+
+  // Function to load books data from API
+  const loadBooksData = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const books = await getReservableBooks();
+      
+      // Transform the data to match the component's expected format
+      const transformedBooks = books.map(book => ({
+        id: book.batch_registration_key,
+        batch_registration_key: book.batch_registration_key,
+        title: book.book_title,
+        book_title: book.book_title,
+        author: book.author,
+        isbn: book.book_number || book.batch_registration_key,
+        category: book.genre,
+        genre: book.genre,
+        publisher: book.publisher,
+        edition: book.book_edition,
+        year: book.book_year,
+        price: book.book_price,
+        donor: book.book_donor,
+        coverImage: book.book_cover || "https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=400&h=600&fit=crop&crop=entropy&auto=format&fm=webp&q=80",
+        location: book.location,
+        totalCopies: book.totalCopies,
+        availableCopies: book.availableCopies,
+        borrowedCopies: book.borrowedCopies,
+        reservedCopies: book.reservedCopies,
+        canReserve: book.canReserve || book.borrowedCopies > 0,
+        isAvailable: book.isAvailable || book.availableCopies > 0,
+        // Mock data for reservation-specific fields (these would come from a reservations API)
+        currentBorrower: book.borrowedCopies > 0 ? "Various Users" : null,
+        expectedReturnDate: book.borrowedCopies > 0 ? "2025-11-15" : null,
+        daysUntilReturn: book.borrowedCopies > 0 ? Math.ceil(Math.random() * 30) : null,
+        reservationCount: book.reservedCopies || 0,
+        rating: book.rating || book.average_rating || null,
+        totalReviews: book.totalReviews || book.total_ratings || 0,
+        reviews: book.reviews || [],
+        copies: book.copies
+      }));
+
+      setAvailableBooks(transformedBooks);
+
+      // Mock reservations data (this would be fetched from a user reservations API)
+      setMyReservations([
+        {
+          id: 1,
+          bookId: transformedBooks[0]?.id || 1,
+          title: transformedBooks[0]?.title || "Sample Book",
+          author: transformedBooks[0]?.author || "Sample Author",
+          isbn: transformedBooks[0]?.isbn || "123456789",
+          reservationDate: "2025-11-01",
+          expectedAvailableDate: "2025-11-15",
+          position: 2,
+          status: "waiting",
+          claimDeadline: "2025-11-17",
+          notificationSent: false,
+          coverImage: transformedBooks[0]?.coverImage || "https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=400&h=600&fit=crop&crop=entropy&auto=format&fm=webp&q=80"
+        }
+      ]);
+
+    } catch (err) {
+      console.error('Error loading books:', err);
+      setError(err.message);
+      toast.error('Failed to load books. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Function to load categories data from API
+  const loadCategoriesData = async () => {
+    try {
+      const categoriesData = await getCategories();
+      setCategories(categoriesData);
+    } catch (err) {
+      console.error('Error loading categories:', err);
+      // Don't show error for categories, just use empty array
+      setCategories([]);
+    }
+  };
+
+  // Function to load research papers data from API
+  const loadResearchesData = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const researches = await getAvailableResearches();
+      
+      // Transform the data to match the component's expected format
+      const transformedResearches = researches.map(paper => ({
+        id: paper.research_paper_id,
+        research_id: paper.research_paper_id,
+        title: paper.research_title,
+        research_title: paper.research_title,
+        author: paper.authors,
+        authors: paper.authors,
+        category: paper.department_name,
+        genre: paper.department_name,
+        department: paper.department_name,
+        year: paper.year_publication,
+        year_publication: paper.year_publication,
+        abstract: paper.research_abstract,
+        research_abstract: paper.research_abstract,
+        price: paper.research_paper_price,
+        coverImage: paper.qr_code || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=600&fit=crop&crop=entropy&auto=format&fm=webp&q=80",
+        location: paper.location,
+        
+        // Research-specific properties
+        type: 'research_paper',
+        isAvailable: paper.isAvailable,
+        canAccess: paper.canAccess,
+        accessType: 'read_only',
+        
+        // Mock data for UI consistency
+        rating: paper.rating || 4.0,
+        totalReviews: paper.totalReviews || 50,
+        canReserve: false, // Research papers typically don't get reserved
+        
+        // For compatibility with existing UI
+        batch_registration_key: `RESEARCH_${paper.research_paper_id}`,
+        isbn: `RES-${paper.research_paper_id}`
+      }));
+
+      setAvailableResearches(transformedResearches);
+
+    } catch (err) {
+      console.error('Error loading research papers:', err);
+      setError(err.message);
+      toast.error('Failed to load research papers. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Function to load departments data from API
+  const loadDepartmentsData = async () => {
+    try {
+      const departmentsData = await getResearchDepartments();
+      setDepartments(departmentsData);
+    } catch (err) {
+      console.error('Error loading departments:', err);
+      // Don't show error for departments, just use empty array
+      setDepartments([]);
+    }
+  };
 
   const handleReserveBook = (bookId) => {
     // In real implementation, this would call an API
@@ -214,393 +387,48 @@ function BookReservation() {
   };
 
   const filteredAvailableBooks = availableBooks.filter(book => {
-    const matchesSearch = book.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         book.author.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         book.isbn.includes(searchTerm);
-    const matchesCategory = filterCategory === 'all' || book.category === filterCategory;
+    const matchesSearch = book.book_title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         book.author?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         book.batch_registration_key?.includes(searchTerm);
+    const matchesCategory = filterCategory === 'all' || book.genre === filterCategory;
     return matchesSearch && matchesCategory;
   });
 
-  const categories = [...new Set(availableBooks.map(book => book.category))];
+  // Filtered research papers
+  const filteredAvailableResearches = availableResearches.filter(research => {
+    const matchesSearch = research.research_title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         research.authors?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         research.abstract?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesDepartment = filterDepartment === 'all' || research.department === filterDepartment;
+    return matchesSearch && matchesDepartment;
+  });
 
-  // Book Detail View Component
-  const BookDetailView = ({ book, onClose }) => {
-    if (!book) return null;
-    
-    return (
-      <div style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'linear-gradient(135deg, #6BA3BE 0%, #0C969C 50%, #0A7075 100%)',
-        zIndex: 1050,
-        overflowY: 'auto'
-      }}>
-        {/* Header */}
-        <div style={{
-          position: 'sticky',
-          top: 0,
-          background: 'rgba(255, 255, 255, 0.95)',
-          backdropFilter: 'blur(20px)',
-          zIndex: 10,
-          padding: window.innerWidth < 768 ? '12px 16px' : '16px 20px',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.2)',
-          boxShadow: '0 4px 20px rgba(12, 150, 156, 0.1)'
-        }}>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'rgba(12, 150, 156, 0.1)',
-              border: 'none',
-              borderRadius: '50%',
-              width: window.innerWidth < 768 ? '36px' : '40px',
-              height: window.innerWidth < 768 ? '36px' : '40px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#0C969C',
-              fontSize: window.innerWidth < 768 ? '16px' : '20px',
-              transition: 'all 0.3s ease'
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.background = 'rgba(12, 150, 156, 0.2)';
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.background = 'rgba(12, 150, 156, 0.1)';
-            }}
-          >
-            <FaArrowLeft />
-          </button>
-        </div>
+  // Pagination calculations for books
+  const totalPagesBooks = Math.ceil(filteredAvailableBooks.length / itemsPerPage);
+  const indexOfLastBook = currentPageBooks * itemsPerPage;
+  const indexOfFirstBook = indexOfLastBook - itemsPerPage;
+  const currentBooks = filteredAvailableBooks.slice(indexOfFirstBook, indexOfLastBook);
 
-        {/* Book Image */}
-        <div style={{ position: 'relative' }}>
-          <img
-            src={book.coverImage}
-            alt={book.title}
-            style={{
-              width: '100%',
-              height: window.innerWidth < 768 ? '280px' : '350px',
-              objectFit: 'cover'
-            }}
-          />
-          <div style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.1) 100%)'
-          }} />
-          <button
-            style={{
-              position: 'absolute',
-              top: '16px',
-              right: '16px',
-              background: 'rgba(255, 255, 255, 0.9)',
-              backdropFilter: 'blur(10px)',
-              border: 'none',
-              borderRadius: '50%',
-              width: window.innerWidth < 768 ? '40px' : '48px',
-              height: window.innerWidth < 768 ? '40px' : '48px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-              color: '#0C969C'
-            }}
-          >
-            <FaHeart size={window.innerWidth < 768 ? 16 : 20} />
-          </button>
-        </div>
+  // Pagination calculations for research papers
+  const totalPagesResearch = Math.ceil(filteredAvailableResearches.length / itemsPerPage);
+  const indexOfLastResearch = currentPageResearch * itemsPerPage;
+  const indexOfFirstResearch = indexOfLastResearch - itemsPerPage;
+  const currentResearches = filteredAvailableResearches.slice(indexOfFirstResearch, indexOfLastResearch);
 
-        {/* Book Info */}
-        <div style={{ 
-          background: 'rgba(255, 255, 255, 0.95)',
-          backdropFilter: 'blur(20px)',
-          margin: window.innerWidth < 768 ? '16px' : '20px',
-          borderRadius: window.innerWidth < 768 ? '20px' : '24px',
-          padding: window.innerWidth < 768 ? '24px' : '32px',
-          boxShadow: '0 20px 40px rgba(12, 150, 156, 0.15)',
-          border: '1px solid rgba(255, 255, 255, 0.2)'
-        }}>
-          {/* Title and Rating */}
-          <div className="mb-4">
-            <h4 style={{ 
-              fontWeight: '700',
-              marginBottom: '12px',
-              color: '#0A7075',
-              fontSize: window.innerWidth < 768 ? '22px' : '28px'
-            }}>
-              {book.title}
-            </h4>
-            <div className="d-flex align-items-center gap-3 mb-3">
-              <div className="d-flex align-items-center">
-                <span style={{ 
-                  marginRight: '8px',
-                  fontSize: window.innerWidth < 768 ? '18px' : '20px',
-                  fontWeight: '700',
-                  color: '#0C969C'
-                }}>
-                  {book.rating}
-                </span>
-                <FaStar style={{ color: '#FFB800' }} size={window.innerWidth < 768 ? 16 : 18} />
-              </div>
-              <span className="text-muted">·</span>
-              <span style={{ 
-                color: '#0C969C',
-                fontWeight: '600',
-                cursor: 'pointer',
-                textDecoration: 'underline',
-                fontSize: window.innerWidth < 768 ? '14px' : '16px'
-              }}>
-                {book.totalReviews} Reviews
-              </span>
-            </div>
-            <p style={{ 
-              color: '#6BA3BE',
-              marginBottom: 0,
-              fontSize: window.innerWidth < 768 ? '16px' : '18px',
-              fontWeight: '500'
-            }}>
-              by {book.author}
-            </p>
-          </div>
+  // Reset pagination when filters change
+  useEffect(() => {
+    setCurrentPageBooks(1);
+  }, [searchTerm, filterCategory]);
 
-          {/* Info Cards */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: window.innerWidth < 768 ? '12px' : '16px',
-            marginBottom: window.innerWidth < 768 ? '24px' : '32px'
-          }}>
-            <div style={{ 
-              background: 'linear-gradient(135deg, #0C969C, #6BA3BE)',
-              borderRadius: window.innerWidth < 768 ? '12px' : '16px',
-              padding: window.innerWidth < 768 ? '16px' : '20px',
-              textAlign: 'center',
-              color: 'white'
-            }}>
-              <div>
-                <small style={{ 
-                  opacity: 0.9, 
-                  fontSize: window.innerWidth < 768 ? '12px' : '14px' 
-                }}>
-                  Expected Return
-                </small>
-                <div style={{ 
-                  fontWeight: '700', 
-                  fontSize: window.innerWidth < 768 ? '16px' : '18px', 
-                  marginTop: '4px' 
-                }}>
-                  {book.expectedReturnDate}
-                </div>
-              </div>
-            </div>
-            <div style={{ 
-              background: 'linear-gradient(135deg, #6BA3BE, #0A7075)',
-              borderRadius: window.innerWidth < 768 ? '12px' : '16px',
-              padding: window.innerWidth < 768 ? '16px' : '20px',
-              textAlign: 'center',
-              color: 'white'
-            }}>
-              <div>
-                <small style={{ 
-                  opacity: 0.9, 
-                  fontSize: window.innerWidth < 768 ? '12px' : '14px' 
-                }}>
-                  Queue Position
-                </small>
-                <div style={{ 
-                  fontWeight: '700', 
-                  fontSize: window.innerWidth < 768 ? '20px' : '24px', 
-                  marginTop: '4px' 
-                }}>
-                  #{book.reservationCount + 1}
-                </div>
-              </div>
-            </div>
-          </div>
+  useEffect(() => {
+    setCurrentPageResearch(1);
+  }, [searchTerm, filterDepartment]);
 
-          {/* Book Features */}
-          <div className="mb-4">
-            <h6 style={{ 
-              fontWeight: '700',
-              marginBottom: '20px',
-              color: '#0A7075',
-              fontSize: window.innerWidth < 768 ? '18px' : '20px'
-            }}>
-              Book Information
-            </h6>
-            <div className={`row g-${window.innerWidth < 768 ? '3' : '4'}`}>
-              <div className="col-6">
-                <div className="d-flex align-items-start gap-3">
-                  <div style={{
-                    background: 'linear-gradient(135deg, #0C969C, #6BA3BE)',
-                    borderRadius: '12px',
-                    padding: window.innerWidth < 768 ? '10px' : '12px',
-                    color: 'white'
-                  }}>
-                    <FaBook size={window.innerWidth < 768 ? 14 : 16} />
-                  </div>
-                  <div>
-                    <small style={{ 
-                      color: '#6BA3BE',
-                      display: 'block',
-                      fontSize: window.innerWidth < 768 ? '12px' : '14px',
-                      fontWeight: '500'
-                    }}>
-                      Category
-                    </small>
-                    <small style={{ 
-                      fontWeight: '700',
-                      color: '#0C969C',
-                      fontSize: window.innerWidth < 768 ? '14px' : '16px'
-                    }}>
-                      {book.category}
-                    </small>
-                  </div>
-                </div>
-              </div>
-              <div className="col-6">
-                <div className="d-flex align-items-start gap-3">
-                  <div style={{
-                    background: 'linear-gradient(135deg, #6BA3BE, #0A7075)',
-                    borderRadius: '12px',
-                    padding: window.innerWidth < 768 ? '10px' : '12px',
-                    color: 'white'
-                  }}>
-                    <FaUsers size={window.innerWidth < 768 ? 14 : 16} />
-                  </div>
-                  <div>
-                    <small style={{ 
-                      color: '#6BA3BE',
-                      display: 'block',
-                      fontSize: window.innerWidth < 768 ? '12px' : '14px',
-                      fontWeight: '500'
-                    }}>
-                      Reservations
-                    </small>
-                    <small style={{ 
-                      fontWeight: '700',
-                      color: '#0C969C',
-                      fontSize: window.innerWidth < 768 ? '14px' : '16px'
-                    }}>
-                      {book.reservationCount} in queue
-                    </small>
-                  </div>
-                </div>
-              </div>
-              <div className="col-6">
-                <div className="d-flex align-items-start gap-3">
-                  <div style={{
-                    background: 'linear-gradient(135deg, #0A7075, #0C969C)',
-                    borderRadius: '12px',
-                    padding: window.innerWidth < 768 ? '10px' : '12px',
-                    color: 'white'
-                  }}>
-                    <FaClock size={window.innerWidth < 768 ? 14 : 16} />
-                  </div>
-                  <div>
-                    <small style={{ 
-                      color: '#6BA3BE',
-                      display: 'block',
-                      fontSize: window.innerWidth < 768 ? '12px' : '14px',
-                      fontWeight: '500'
-                    }}>
-                      Return In
-                    </small>
-                    <small style={{ 
-                      fontWeight: '700',
-                      color: '#0C969C',
-                      fontSize: window.innerWidth < 768 ? '14px' : '16px'
-                    }}>
-                      {book.daysUntilReturn} days
-                    </small>
-                  </div>
-                </div>
-              </div>
-              <div className="col-6">
-                <div className="d-flex align-items-start gap-3">
-                  <div style={{
-                    background: 'linear-gradient(135deg, #6BA3BE, #0C969C)',
-                    borderRadius: '12px',
-                    padding: window.innerWidth < 768 ? '10px' : '12px',
-                    color: 'white'
-                  }}>
-                    <FaMapMarkerAlt size={window.innerWidth < 768 ? 14 : 16} />
-                  </div>
-                  <div>
-                    <small style={{ 
-                      color: '#6BA3BE',
-                      display: 'block',
-                      fontSize: window.innerWidth < 768 ? '12px' : '14px',
-                      fontWeight: '500'
-                    }}>
-                      Location
-                    </small>
-                    <small style={{ 
-                      fontWeight: '700',
-                      color: '#0C969C',
-                      fontSize: window.innerWidth < 768 ? '14px' : '16px'
-                    }}>
-                      3rd Floor
-                    </small>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Description */}
-          <div className="mb-4">
-            <p style={{ 
-              color: '#6BA3BE',
-              lineHeight: '1.6',
-              fontSize: window.innerWidth < 768 ? '14px' : '16px'
-            }}>
-              Located in the {book.location}. {book.title} is currently borrowed by {book.currentBorrower}. 
-              This book is expected to be available by {book.expectedReturnDate}.
-            </p>
-          </div>
-
-          {/* Reserve Button */}
-          <button
-            onClick={() => handleReserveBook(book.id)}
-            disabled={!book.canReserve}
-            style={{
-              width: '100%',
-              background: 'linear-gradient(135deg, #0C969C, #6BA3BE)',
-              color: 'white',
-              border: 'none',
-              borderRadius: '16px',
-              fontSize: window.innerWidth < 768 ? '16px' : '18px',
-              fontWeight: '700',
-              padding: window.innerWidth < 768 ? '16px' : '20px',
-              boxShadow: '0 8px 24px rgba(12, 150, 156, 0.4)',
-              transition: 'all 0.3s ease'
-            }}
-            onMouseEnter={(e) => {
-              if (window.innerWidth >= 768) {
-                e.target.style.transform = 'translateY(-2px)';
-                e.target.style.boxShadow = '0 12px 32px rgba(12, 150, 156, 0.5)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (window.innerWidth >= 768) {
-                e.target.style.transform = 'translateY(0)';
-                e.target.style.boxShadow = '0 8px 24px rgba(12, 150, 156, 0.4)';
-              }
-            }}
-          >
-            RESERVE THIS BOOK
-          </button>
-        </div>
-      </div>
-    );
-  };
+  // Reset pagination when switching tabs
+  useEffect(() => {
+    setCurrentPageBooks(1);
+    setCurrentPageResearch(1);
+  }, [activeTab]);
 
   return (
     <div style={{ 
@@ -608,16 +436,88 @@ function BookReservation() {
       paddingTop: '80px',
       paddingBottom: '100px'
     }}>
+      {/* Loading State */}
+          {loading && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '56px 12px' }}>
+              <div style={{
+                width: 'min(880px, 96%)',
+                background: 'rgba(255,255,255,0.98)',
+                borderRadius: '16px',
+                padding: '28px 24px',
+                boxShadow: '0 18px 40px rgba(12,150,156,0.12)',
+                border: '1px solid rgba(12,150,156,0.08)'
+              }}>
+                <div style={{ display: 'flex', gap: '18px', alignItems: 'center' }}>
+                  <div style={{
+                    width: 64,
+                    height: 64,
+                    borderRadius: 12,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    background: 'linear-gradient(135deg, #0C969C, #6BA3BE)',
+                    boxShadow: '0 8px 20px rgba(12,150,156,0.24)'
+                  }}>
+                    <FaBook size={28} />
+                  </div>
+
+                  <div style={{ textAlign: 'left', flex: 1 }}>
+                    <h4 style={{ margin: 0, color: '#0A7075', fontWeight: 800 }}>Loading library resources</h4>
+                    <p style={{ margin: '6px 0 0', color: '#6BA3BE' }}>Preparing available books and research papers. This may take a moment.</p>
+                    <div style={{ marginTop: 16 }}>
+                      <div style={{ height: 12, background: 'rgba(12,150,156,0.08)', borderRadius: 8, overflow: 'hidden' }}>
+                        <div style={{
+                          width: '48%',
+                          height: '100%',
+                          background: 'linear-gradient(90deg, rgba(12,150,156,0.9), rgba(107,163,190,0.9))',
+                          transform: 'translateX(-10%)',
+                          animation: 'ltLoadingBar 1.6s ease-in-out infinite'
+                        }} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* inline keyframes for loading bar animation */}
+              <style>{`@keyframes ltLoadingBar { 0% { transform: translateX(-30%); } 50% { transform: translateX(20%); } 100% { transform: translateX(120%); } }`}</style>
+            </div>
+          )}
+
+      {/* Error State */}
+      {error && !loading && (
+        <div className="alert alert-danger mx-3" role="alert">
+          <h5 className="alert-heading">Error Loading Books</h5>
+          <p>{error}</p>
+          <button 
+            className="btn btn-outline-danger" 
+            onClick={loadBooksData}
+          >
+            Try Again
+          </button>
+        </div>
+      )}
+
       {/* Show detail view if book is selected */}
       {selectedBook && (
-        <BookDetailView 
+        <BookDetailModal 
           book={selectedBook} 
-          onClose={() => setSelectedBook(null)} 
+          onClose={() => setSelectedBook(null)}
+          onReserve={handleReserveBook}
         />
       )}
 
-      {/* Main Content - Only show when no book is selected */}
-      {!selectedBook && (
+      {/* Show detail view if research is selected */}
+      {selectedResearch && (
+        <ResearchDetailModal 
+          research={selectedResearch} 
+          onClose={() => setSelectedResearch(null)} 
+        />
+      )}
+
+      {/* Main Content - Only show when no book/research is selected and not loading */}
+      {!selectedBook && !selectedResearch && !loading && (
         <div className="container-fluid px-3 px-lg-4" style={{ maxWidth: '1200px' }}>
           {/* Hero Section */}
           <div style={{
@@ -655,13 +555,16 @@ function BookReservation() {
                     left: isMobile ? '16px' : '20px',
                     top: '50%',
                     transform: 'translateY(-50%)',
-                    color: '#050505ff',
-                    fontSize: isMobile ? '16px' : '18px'
+                    color: '#0C969C',
+                    fontSize: isMobile ? '16px' : '18px',
+                    zIndex: 3,
+                    opacity: 0.95,
+                    pointerEvents: 'none'
                   }} />
                   <input
                     type="text"
                     className="form-control"
-                    placeholder="Search by title, author, or ISBN..."
+                    placeholder="Search ..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     style={{
@@ -689,7 +592,7 @@ function BookReservation() {
               
               {/* Stats Cards */}
               <div className="col-lg-4 mt-4 mt-lg-0">
-                <div className="row g-2 g-lg-3">
+                <div className="row g-2 g-lg-4">
                   <div className="col-6">
                     <div style={{
                       background: 'linear-gradient(135deg, #0C969C, #6BA3BE)',
@@ -712,9 +615,33 @@ function BookReservation() {
                       </small>
                     </div>
                   </div>
+
                   <div className="col-6">
                     <div style={{
                       background: 'linear-gradient(135deg, #6BA3BE, #0A7075)',
+                      borderRadius: isMobile ? '12px' : '16px',
+                      padding: isMobile ? '16px 12px' : '20px',
+                      textAlign: 'center',
+                      color: 'white'
+                    }}>
+                      <div style={{ 
+                        fontSize: isMobile ? '20px' : '24px', 
+                        fontWeight: '700' 
+                      }}>
+                        {availableResearches.length}
+                      </div>
+                      <small style={{ 
+                        fontSize: isMobile ? '10px' : '12px', 
+                        opacity: 0.9 
+                      }}>
+                        Available Researches
+                      </small>
+                    </div>
+                  </div>
+
+                  <div className="col-6">
+                    <div style={{
+                      background: 'linear-gradient(135deg, #0A7075, #0C969C)',
                       borderRadius: isMobile ? '12px' : '16px',
                       padding: isMobile ? '16px 12px' : '20px',
                       textAlign: 'center',
@@ -734,9 +661,10 @@ function BookReservation() {
                       </small>
                     </div>
                   </div>
+
                   <div className="col-6">
                     <div style={{
-                      background: 'linear-gradient(135deg, #0A7075, #0C969C)',
+                      background: 'linear-gradient(135deg, #6BA3BE, #0C969C)',
                       borderRadius: isMobile ? '12px' : '16px',
                       padding: isMobile ? '16px 12px' : '20px',
                       textAlign: 'center',
@@ -753,28 +681,6 @@ function BookReservation() {
                         opacity: 0.9 
                       }}>
                         Ready to Claim
-                      </small>
-                    </div>
-                  </div>
-                  <div className="col-6">
-                    <div style={{
-                      background: 'linear-gradient(135deg, #6BA3BE, #0C969C)',
-                      borderRadius: isMobile ? '12px' : '16px',
-                      padding: isMobile ? '16px 12px' : '20px',
-                      textAlign: 'center',
-                      color: 'white'
-                    }}>
-                      <div style={{ 
-                        fontSize: isMobile ? '20px' : '24px', 
-                        fontWeight: '700' 
-                      }}>
-                        {myReservations.filter(r => r.notificationSent).length}
-                      </div>
-                      <small style={{ 
-                        fontSize: isMobile ? '10px' : '12px', 
-                        opacity: 0.9 
-                      }}>
-                        Notifications
                       </small>
                     </div>
                   </div>
@@ -799,41 +705,89 @@ function BookReservation() {
               <button
                 onClick={() => setActiveTab('available')}
                 style={{
-                  flex: 1,
-                  padding: isMobile ? '12px 16px' : '16px 24px',
+                  flex: '1 1 33%',
+                  minWidth: 0,
+                  boxSizing: 'border-box',
+                  padding: isMobile ? '10px 6px' : '16px 24px',
                   border: 'none',
                   borderRadius: isMobile ? '8px' : '12px',
-                  background: activeTab === 'available' 
-                    ? 'linear-gradient(135deg, #0C969C, #6BA3BE)' 
+                  background: activeTab === 'available'
+                    ? 'linear-gradient(135deg, #0C969C, #6BA3BE)'
                     : 'transparent',
                   color: activeTab === 'available' ? 'white' : '#0C969C',
                   fontWeight: '600',
-                  fontSize: isMobile ? '14px' : '16px',
+                  fontSize: isMobile ? '13px' : '16px',
                   transition: 'all 0.3s ease',
-                  boxShadow: activeTab === 'available' 
-                    ? '0 4px 12px rgba(12, 150, 156, 0.3)' 
-                    : 'none'
+                  boxShadow: activeTab === 'available'
+                    ? '0 4px 12px rgba(12, 150, 156, 0.3)'
+                    : 'none',
+                  textAlign: 'center',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
                 }}
               >
-                Available Books
+                Books
+              </button>
+              <button
+                onClick={() => setActiveTab('researches')}
+                style={{
+                  flex: '1 1 33%',
+                  minWidth: 0,
+                  boxSizing: 'border-box',
+                  padding: isMobile ? '10px 6px' : '16px 24px',
+                  border: 'none',
+                  borderRadius: isMobile ? '8px' : '12px',
+                  background: activeTab === 'researches'
+                    ? 'linear-gradient(135deg, #0C969C, #6BA3BE)'
+                    : 'transparent',
+                  color: activeTab === 'researches' ? 'white' : '#0C969C',
+                  fontWeight: '600',
+                  fontSize: isMobile ? '13px' : '16px',
+                  transition: 'all 0.3s ease',
+                  boxShadow: activeTab === 'researches'
+                    ? '0 4px 12px rgba(12, 150, 156, 0.3)'
+                    : 'none',
+                  textAlign: 'center',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                Research Papers
               </button>
               <button
                 onClick={() => setActiveTab('reservations')}
                 style={{
-                  flex: 1,
-                  padding: isMobile ? '12px 16px' : '16px 24px',
+                  flex: '1 1 33%',
+                  minWidth: 0,
+                  boxSizing: 'border-box',
+                  padding: isMobile ? '10px 6px' : '16px 24px',
                   border: 'none',
                   borderRadius: isMobile ? '8px' : '12px',
-                  background: activeTab === 'reservations' 
-                    ? 'linear-gradient(135deg, #0C969C, #6BA3BE)' 
+                  background: activeTab === 'reservations'
+                    ? 'linear-gradient(135deg, #0C969C, #6BA3BE)'
                     : 'transparent',
                   color: activeTab === 'reservations' ? 'white' : '#0C969C',
                   fontWeight: '600',
-                  fontSize: isMobile ? '14px' : '16px',
+                  fontSize: isMobile ? '13px' : '16px',
                   transition: 'all 0.3s ease',
-                  boxShadow: activeTab === 'reservations' 
-                    ? '0 4px 12px rgba(12, 150, 156, 0.3)' 
-                    : 'none'
+                  boxShadow: activeTab === 'reservations'
+                    ? '0 4px 12px rgba(12, 150, 156, 0.3)'
+                    : 'none',
+                  textAlign: 'center',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
                 }}
               >
                 My Reservations
@@ -872,7 +826,8 @@ function BookReservation() {
                   </div>
                   <div className="col-lg-6 text-end d-none d-lg-block">
                     <span style={{ color: 'white', fontWeight: '500' }}>
-                      Showing {filteredAvailableBooks.length} of {availableBooks.length} books
+                      Showing {indexOfFirstBook + 1}-{Math.min(indexOfLastBook, filteredAvailableBooks.length)} of {filteredAvailableBooks.length} books
+                      {filteredAvailableBooks.length !== availableBooks.length && ` (filtered from ${availableBooks.length})`}
                     </span>
                   </div>
                 </div>
@@ -880,7 +835,7 @@ function BookReservation() {
 
               {/* Books Grid - Responsive */}
               <div className="row g-3 g-lg-4">
-                {filteredAvailableBooks.map(book => (
+                {currentBooks.map(book => (
                   <div key={book.id} className="col-12 col-sm-6 col-lg-4">
                     <div
                       onClick={() => setSelectedBook(book)}
@@ -916,7 +871,7 @@ function BookReservation() {
                           <div style={{ position: 'relative', overflow: 'hidden' }}>
                             <img
                               src={book.coverImage}
-                              alt={book.title}
+                              alt={book.book_title}
                               style={{
                                 width: '100px',
                                 height: '130px',
@@ -956,7 +911,7 @@ function BookReservation() {
                               WebkitBoxOrient: 'vertical',
                               marginBottom: '4px'
                             }}>
-                              {book.title}
+                              {book.book_title}
                             </h6>
                             <p style={{ 
                               color: '#6BA3BE',
@@ -976,7 +931,7 @@ function BookReservation() {
                               display: 'inline-block',
                               marginBottom: '8px'
                             }}>
-                              {book.category}
+                              {book.genre}
                             </span>
 
                             <div className="d-flex align-items-center gap-2 mb-2">
@@ -1034,7 +989,7 @@ function BookReservation() {
                         <div style={{ position: 'relative', overflow: 'hidden' }}>
                           <img
                             src={book.coverImage}
-                            alt={book.title}
+                            alt={book.book_title}
                             style={{
                               width: '100%',
                               height: window.innerWidth < 992 ? '200px' : '240px',
@@ -1086,7 +1041,7 @@ function BookReservation() {
                               minHeight: window.innerWidth < 992 ? '44px' : '50px',
                               marginBottom: '8px'
                             }}>
-                              {book.title}
+                              {book.book_title}
                             </h5>
                             <p style={{ 
                               color: '#6BA3BE',
@@ -1105,7 +1060,7 @@ function BookReservation() {
                               borderRadius: '8px',
                               display: 'inline-block'
                             }}>
-                              {book.category}
+                              {book.genre}
                             </span>
                           </div>
 
@@ -1165,46 +1120,508 @@ function BookReservation() {
                               </span>
                             </div>
                           </div>
-
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleReserveBook(book.id);
-                            }}
-                            disabled={!book.canReserve}
-                            style={{
-                              width: '100%',
-                              background: 'linear-gradient(135deg, #0C969C, #6BA3BE)',
-                              color: 'white',
-                              border: 'none',
-                              borderRadius: '12px',
-                              fontSize: '14px',
-                              fontWeight: '600',
-                              padding: '12px',
-                              transition: 'all 0.3s ease',
-                              boxShadow: '0 4px 12px rgba(12, 150, 156, 0.3)'
-                            }}
-                            onMouseEnter={(e) => {
-                              if (window.innerWidth >= 768) {
-                                e.target.style.boxShadow = '0 6px 16px rgba(12, 150, 156, 0.4)';
-                                e.target.style.transform = 'translateY(-2px)';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (window.innerWidth >= 768) {
-                                e.target.style.boxShadow = '0 4px 12px rgba(12, 150, 156, 0.3)';
-                                e.target.style.transform = 'translateY(0)';
-                              }
-                            }}
-                          >
-                            Reserve Book
-                          </button>
                         </div>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
+
+              {/* Books Pagination */}
+              {totalPagesBooks > 1 && (
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'center', 
+                  alignItems: 'center',
+                  gap: isMobile ? '8px' : '12px',
+                  marginTop: isMobile ? '24px' : '32px',
+                  flexWrap: 'wrap'
+                }}>
+                  <button
+                    onClick={() => setCurrentPageBooks(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPageBooks === 1}
+                    style={{
+                      background: currentPageBooks === 1 
+                        ? 'rgba(12, 150, 156, 0.1)' 
+                        : 'linear-gradient(135deg, #0C969C, #6BA3BE)',
+                      color: currentPageBooks === 1 ? '#6BA3BE' : 'white',
+                      border: 'none',
+                      borderRadius: '10px',
+                      padding: isMobile ? '8px 16px' : '10px 20px',
+                      fontSize: isMobile ? '13px' : '14px',
+                      fontWeight: '600',
+                      cursor: currentPageBooks === 1 ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.3s ease',
+                      boxShadow: currentPageBooks === 1 
+                        ? 'none' 
+                        : '0 4px 12px rgba(12, 150, 156, 0.3)'
+                    }}
+                  >
+                    Previous
+                  </button>
+
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                    {[...Array(totalPagesBooks)].map((_, index) => {
+                      const pageNumber = index + 1;
+                      // Show first page, last page, current page, and pages around current
+                      const showPage = pageNumber === 1 || 
+                                      pageNumber === totalPagesBooks || 
+                                      Math.abs(pageNumber - currentPageBooks) <= 1;
+                      
+                      if (!showPage && pageNumber === 2 && currentPageBooks > 3) {
+                        return <span key={pageNumber} style={{ color: '#6BA3BE', padding: '0 4px' }}>...</span>;
+                      }
+                      if (!showPage && pageNumber === totalPagesBooks - 1 && currentPageBooks < totalPagesBooks - 2) {
+                        return <span key={pageNumber} style={{ color: '#6BA3BE', padding: '0 4px' }}>...</span>;
+                      }
+                      if (!showPage) return null;
+
+                      return (
+                        <button
+                          key={pageNumber}
+                          onClick={() => setCurrentPageBooks(pageNumber)}
+                          style={{
+                            background: currentPageBooks === pageNumber
+                              ? 'linear-gradient(135deg, #0C969C, #6BA3BE)'
+                              : 'rgba(255, 255, 255, 0.95)',
+                            color: currentPageBooks === pageNumber ? 'white' : '#0C969C',
+                            border: currentPageBooks === pageNumber 
+                              ? 'none' 
+                              : '2px solid rgba(12, 150, 156, 0.2)',
+                            borderRadius: '8px',
+                            width: isMobile ? '36px' : '40px',
+                            height: isMobile ? '36px' : '40px',
+                            fontSize: isMobile ? '13px' : '14px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            transition: 'all 0.3s ease',
+                            boxShadow: currentPageBooks === pageNumber
+                              ? '0 4px 12px rgba(12, 150, 156, 0.3)'
+                              : 'none'
+                          }}
+                        >
+                          {pageNumber}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    onClick={() => setCurrentPageBooks(prev => Math.min(prev + 1, totalPagesBooks))}
+                    disabled={currentPageBooks === totalPagesBooks}
+                    style={{
+                      background: currentPageBooks === totalPagesBooks 
+                        ? 'rgba(12, 150, 156, 0.1)' 
+                        : 'linear-gradient(135deg, #0C969C, #6BA3BE)',
+                      color: currentPageBooks === totalPagesBooks ? '#6BA3BE' : 'white',
+                      border: 'none',
+                      borderRadius: '10px',
+                      padding: isMobile ? '8px 16px' : '10px 20px',
+                      fontSize: isMobile ? '13px' : '14px',
+                      fontWeight: '600',
+                      cursor: currentPageBooks === totalPagesBooks ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.3s ease',
+                      boxShadow: currentPageBooks === totalPagesBooks 
+                        ? 'none' 
+                        : '0 4px 12px rgba(12, 150, 156, 0.3)'
+                    }}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Research Papers Content */}
+          {activeTab === 'researches' && (
+            <>
+              {/* Department Filter */}
+              <div className="mb-3 mb-lg-4">
+                <div className="row align-items-center">
+                  <div className="col-lg-6">
+                    <select
+                      className="form-select"
+                      value={filterDepartment}
+                      onChange={(e) => setFilterDepartment(e.target.value)}
+                      style={{
+                        border: '2px solid rgba(12, 150, 156, 0.2)',
+                        background: 'rgba(255, 255, 255, 0.95)',
+                        backdropFilter: 'blur(20px)',
+                        borderRadius: window.innerWidth < 768 ? '12px' : '16px',
+                        padding: window.innerWidth < 768 ? '12px 16px' : '16px 20px',
+                        fontSize: window.innerWidth < 768 ? '14px' : '16px',
+                        maxWidth: window.innerWidth < 768 ? '100%' : '300px',
+                        color: '#0C969C',
+                        fontWeight: '500'
+                      }}
+                    >
+                      <option value="all">All Departments</option>
+                      {departments.map(department => (
+                        <option key={department} value={department}>{department}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-lg-6 text-end d-none d-lg-block">
+                    <span style={{ color: 'white', fontWeight: '500' }}>
+                      Showing {indexOfFirstResearch + 1}-{Math.min(indexOfLastResearch, filteredAvailableResearches.length)} of {filteredAvailableResearches.length} research papers
+                      {filteredAvailableResearches.length !== availableResearches.length && ` (filtered from ${availableResearches.length})`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Research Papers List - Professional Design */}
+              <div className="row g-3">
+                {currentResearches.map(research => (
+                  <div key={research.id} className="col-12">
+                    <div
+                      onClick={() => setSelectedResearch(research)}
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.98)',
+                        backdropFilter: 'blur(20px)',
+                        borderRadius: isMobile ? '14px' : '16px',
+                        padding: '0',
+                        boxShadow: '0 2px 12px rgba(12, 150, 156, 0.12)',
+                        border: '1px solid rgba(12, 150, 156, 0.15)',
+                        cursor: 'pointer',
+                        transition: 'all 0.3s ease',
+                        overflow: 'hidden'
+                      }}
+                      className="research-card"
+                      onMouseEnter={(e) => {
+                        if (!isMobile) {
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                          e.currentTarget.style.boxShadow = '0 6px 20px rgba(12, 150, 156, 0.2)';
+                          e.currentTarget.style.borderColor = '#0C969C';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isMobile) {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = '0 2px 12px rgba(12, 150, 156, 0.12)';
+                          e.currentTarget.style.borderColor = 'rgba(12, 150, 156, 0.15)';
+                        }
+                      }}
+                    >
+                      {/* Header Section with Icon and Title */}
+                      <div style={{
+                        background: 'linear-gradient(135deg, rgba(12, 150, 156, 0.05), rgba(107, 163, 190, 0.05))',
+                        padding: isMobile ? '14px' : '18px',
+                        borderBottom: '1px solid rgba(12, 150, 156, 0.1)'
+                      }}>
+                        <div style={{ 
+                          display: 'flex', 
+                          gap: isMobile ? '12px' : '16px',
+                          alignItems: 'flex-start'
+                        }}>
+                          {/* Research Paper Icon */}
+                          <div style={{
+                            background: 'linear-gradient(135deg, #0C969C, #6BA3BE)',
+                            borderRadius: '10px',
+                            width: isMobile ? '44px' : '52px',
+                            height: isMobile ? '44px' : '52px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            boxShadow: '0 4px 12px rgba(12, 150, 156, 0.25)'
+                          }}>
+                            <FaFileAlt style={{ 
+                              color: 'white', 
+                              fontSize: isMobile ? '18px' : '22px' 
+                            }} />
+                          </div>
+                          
+                          {/* Title Section */}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <h5 style={{ 
+                              fontSize: isMobile ? '15px' : '18px',
+                              fontWeight: '700',
+                              color: '#0A7075',
+                              marginBottom: isMobile ? '6px' : '8px',
+                              lineHeight: '1.3',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical'
+                            }}>
+                              {research.research_title}
+                            </h5>
+                            
+                            {/* Authors - Desktop */}
+                            {!isMobile && (
+                              <p style={{ 
+                                color: '#6BA3BE',
+                                fontSize: '14px',
+                                marginBottom: '0',
+                                fontWeight: '500',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap'
+                              }}>
+                                <i className="fas fa-user-edit" style={{ marginRight: '6px', fontSize: '12px' }}></i>
+                                {research.authors}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Content Section */}
+                      <div style={{ 
+                        padding: isMobile ? '14px' : '18px'
+                      }}>
+                        {/* Authors - Mobile */}
+                        {isMobile && (
+                          <p style={{ 
+                            color: '#6BA3BE',
+                            fontSize: '13px',
+                            marginBottom: '12px',
+                            fontWeight: '500',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            lineHeight: '1.4'
+                          }}>
+                            <i className="fas fa-user-edit" style={{ marginRight: '6px', fontSize: '11px' }}></i>
+                            {research.authors}
+                          </p>
+                        )}
+                        
+                        {/* Metadata Row */}
+                        <div style={{ 
+                          display: 'flex', 
+                          gap: isMobile ? '6px' : '10px', 
+                          flexWrap: 'wrap',
+                          alignItems: 'center'
+                        }}>
+                          {/* Department Badge */}
+                          <span style={{
+                            background: 'linear-gradient(135deg, #0C969C, #6BA3BE)',
+                            color: 'white',
+                            padding: isMobile ? '5px 10px' : '6px 12px',
+                            borderRadius: '6px',
+                            fontSize: isMobile ? '10px' : '12px',
+                            fontWeight: '600',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            <i className="fas fa-building" style={{ fontSize: isMobile ? '9px' : '10px' }}></i>
+                            {research.department}
+                          </span>
+                          
+                          {/* Year Badge */}
+                          <span style={{
+                            background: 'rgba(12, 150, 156, 0.1)',
+                            color: '#0C969C',
+                            padding: isMobile ? '5px 10px' : '6px 12px',
+                            borderRadius: '6px',
+                            fontSize: isMobile ? '10px' : '12px',
+                            fontWeight: '600',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            <i className="fas fa-calendar-alt" style={{ fontSize: isMobile ? '9px' : '10px' }}></i>
+                            {research.year_publication}
+                          </span>
+                          
+                          {/* Rating */}
+                          <span style={{
+                            background: 'rgba(255, 193, 7, 0.1)',
+                            color: '#F59E0B',
+                            padding: isMobile ? '5px 10px' : '6px 12px',
+                            borderRadius: '6px',
+                            fontSize: isMobile ? '10px' : '12px',
+                            fontWeight: '600',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            <FaStar style={{ fontSize: isMobile ? '9px' : '10px' }} />
+                            {research.rating} ({research.totalReviews})
+                          </span>
+                        </div>
+
+                        {/* View Details Link - Mobile */}
+                        {isMobile && (
+                          <div style={{ 
+                            marginTop: '12px',
+                            paddingTop: '12px',
+                            borderTop: '1px solid rgba(12, 150, 156, 0.1)',
+                            textAlign: 'right'
+                          }}>
+                            <span style={{
+                              color: '#0C969C',
+                              fontSize: '12px',
+                              fontWeight: '600',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '4px'
+                            }}>
+                              View Details
+                              <FaChevronRight style={{ fontSize: '10px' }} />
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Action Button - Desktop */}
+                        {!isMobile && (
+                          <div style={{ 
+                            marginTop: '14px',
+                            display: 'flex',
+                            justifyContent: 'flex-end'
+                          }}>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedResearch(research);
+                              }}
+                              style={{
+                                background: 'transparent',
+                                border: '2px solid #0C969C',
+                                borderRadius: '8px',
+                                padding: '8px 20px',
+                                color: '#0C969C',
+                                fontWeight: '600',
+                                fontSize: '14px',
+                                transition: 'all 0.3s ease',
+                                whiteSpace: 'nowrap',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.background = '#0C969C';
+                                e.currentTarget.style.color = 'white';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.background = 'transparent';
+                                e.currentTarget.style.color = '#0C969C';
+                              }}
+                            >
+                              View Details
+                              <FaChevronRight style={{ fontSize: '12px' }} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Research Pagination */}
+              {totalPagesResearch > 1 && (
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'center', 
+                  alignItems: 'center',
+                  gap: isMobile ? '8px' : '12px',
+                  marginTop: isMobile ? '24px' : '32px',
+                  flexWrap: 'wrap'
+                }}>
+                  <button
+                    onClick={() => setCurrentPageResearch(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPageResearch === 1}
+                    style={{
+                      background: currentPageResearch === 1 
+                        ? 'rgba(12, 150, 156, 0.1)' 
+                        : 'linear-gradient(135deg, #0C969C, #6BA3BE)',
+                      color: currentPageResearch === 1 ? '#6BA3BE' : 'white',
+                      border: 'none',
+                      borderRadius: '10px',
+                      padding: isMobile ? '8px 16px' : '10px 20px',
+                      fontSize: isMobile ? '13px' : '14px',
+                      fontWeight: '600',
+                      cursor: currentPageResearch === 1 ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.3s ease',
+                      boxShadow: currentPageResearch === 1 
+                        ? 'none' 
+                        : '0 4px 12px rgba(12, 150, 156, 0.3)'
+                    }}
+                  >
+                    Previous
+                  </button>
+
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                    {[...Array(totalPagesResearch)].map((_, index) => {
+                      const pageNumber = index + 1;
+                      // Show first page, last page, current page, and pages around current
+                      const showPage = pageNumber === 1 || 
+                                      pageNumber === totalPagesResearch || 
+                                      Math.abs(pageNumber - currentPageResearch) <= 1;
+                      
+                      if (!showPage && pageNumber === 2 && currentPageResearch > 3) {
+                        return <span key={pageNumber} style={{ color: '#6BA3BE', padding: '0 4px' }}>...</span>;
+                      }
+                      if (!showPage && pageNumber === totalPagesResearch - 1 && currentPageResearch < totalPagesResearch - 2) {
+                        return <span key={pageNumber} style={{ color: '#6BA3BE', padding: '0 4px' }}>...</span>;
+                      }
+                      if (!showPage) return null;
+
+                      return (
+                        <button
+                          key={pageNumber}
+                          onClick={() => setCurrentPageResearch(pageNumber)}
+                          style={{
+                            background: currentPageResearch === pageNumber
+                              ? 'linear-gradient(135deg, #0C969C, #6BA3BE)'
+                              : 'rgba(255, 255, 255, 0.95)',
+                            color: currentPageResearch === pageNumber ? 'white' : '#0C969C',
+                            border: currentPageResearch === pageNumber 
+                              ? 'none' 
+                              : '2px solid rgba(12, 150, 156, 0.2)',
+                            borderRadius: '8px',
+                            width: isMobile ? '36px' : '40px',
+                            height: isMobile ? '36px' : '40px',
+                            fontSize: isMobile ? '13px' : '14px',
+                            fontWeight: '600',
+                            cursor: 'pointer',
+                            transition: 'all 0.3s ease',
+                            boxShadow: currentPageResearch === pageNumber
+                              ? '0 4px 12px rgba(12, 150, 156, 0.3)'
+                              : 'none'
+                          }}
+                        >
+                          {pageNumber}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <button
+                    onClick={() => setCurrentPageResearch(prev => Math.min(prev + 1, totalPagesResearch))}
+                    disabled={currentPageResearch === totalPagesResearch}
+                    style={{
+                      background: currentPageResearch === totalPagesResearch 
+                        ? 'rgba(12, 150, 156, 0.1)' 
+                        : 'linear-gradient(135deg, #0C969C, #6BA3BE)',
+                      color: currentPageResearch === totalPagesResearch ? '#6BA3BE' : 'white',
+                      border: 'none',
+                      borderRadius: '10px',
+                      padding: isMobile ? '8px 16px' : '10px 20px',
+                      fontSize: isMobile ? '13px' : '14px',
+                      fontWeight: '600',
+                      cursor: currentPageResearch === totalPagesResearch ? 'not-allowed' : 'pointer',
+                      transition: 'all 0.3s ease',
+                      boxShadow: currentPageResearch === totalPagesResearch 
+                        ? 'none' 
+                        : '0 4px 12px rgba(12, 150, 156, 0.3)'
+                    }}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </>
           )}
 

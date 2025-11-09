@@ -107,12 +107,18 @@ class ActionProvider {
     this.updateChatbotState(message);
   }
 
-  handleBookSearch(query) {
-    const message = this.createChatbotMessage('Let me help you search for books. Please provide more details:', {
-      widget: 'bookAvailability',
-    });
-    
-    this.updateChatbotState(message);
+  handleBookSearch(query, bookTitle = null) {
+    if (bookTitle) {
+      // If Wit.ai extracted a book title, use it
+      this.handleSpecificBookSearch(bookTitle);
+    } else {
+      // Otherwise, ask for more details
+      const message = this.createChatbotMessage('Let me help you search for books. Please provide more details:', {
+        widget: 'bookAvailability',
+      });
+      
+      this.updateChatbotState(message);
+    }
   }
 
   handleBorrowInfo() {
