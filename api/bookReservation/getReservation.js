@@ -32,7 +32,12 @@ export const fetchAllReservations = async (filters = {}) => {
       : `${API_BASE_URL}/api/reservations`;
 
     const response = await axios.get(url);
-    return response.data;
+    const payload = response.data || {};
+    // Ensure each reservation has a numeric position for UI
+    if (payload.data && Array.isArray(payload.data)) {
+      payload.data = payload.data.map(r => ({ ...r, position: Number(r.position) || 1 }));
+    }
+    return payload;
   } catch (error) {
     console.error('Error fetching all reservations:', error);
     throw new Error(`Failed to fetch reservations: ${error.response?.data?.message || error.message}`);
@@ -56,7 +61,12 @@ export const getReservationById = async (reservationId) => {
       throw new Error(response.data.message || 'Failed to fetch reservation');
     }
 
-    return response.data;
+    const payload = response.data || {};
+    if (payload.data) {
+      payload.data.position = Number(payload.data.position) || 1;
+    }
+
+    return payload;
   } catch (error) {
     console.error(`Error fetching reservation ${reservationId}:`, error);
     throw new Error(`Failed to fetch reservation: ${error.response?.data?.message || error.message}`);
@@ -91,7 +101,12 @@ export const getUserReservations = async (userId, status = null) => {
       throw new Error(response.data.message || 'Failed to fetch user reservations');
     }
 
-    return response.data;
+    const payload = response.data || {};
+    if (payload.data && Array.isArray(payload.data)) {
+      payload.data = payload.data.map(r => ({ ...r, position: Number(r.position) || 1 }));
+    }
+
+    return payload;
   } catch (error) {
     console.error(`Error fetching reservations for user ${userId}:`, error);
     throw new Error(`Failed to fetch user reservations: ${error.response?.data?.message || error.message}`);

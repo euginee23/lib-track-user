@@ -193,8 +193,20 @@ function App() {
 
   const VerificationRoute = ({ children }) => {
     const [shouldRender, setShouldRender] = useState(null);
+    const [lastPath, setLastPath] = useState("");
     
     useEffect(() => {
+      // Reset check when path changes
+      if (lastPath !== location.pathname) {
+        setLastPath(location.pathname);
+        setShouldRender(null);
+      }
+
+      // Skip if we've already determined what to render for this path
+      if (shouldRender !== null && lastPath === location.pathname) {
+        return;
+      }
+
       const checkVerificationAccess = async () => {
         const isAuth = checkAuth();
         if (!isAuth) {
@@ -202,8 +214,8 @@ function App() {
           return;
         }
 
-        // Get fresh user data
-        const user = await authService.getUserWithRefresh(true);
+        // Get user data without forcing refresh to avoid loops
+        const user = await authService.getUserWithRefresh(false);
         if (!user) {
           setShouldRender(<Navigate to="/" replace />);
           return;
@@ -220,19 +232,27 @@ function App() {
           return;
         }
 
-        // If email is verified but librarian approval pending, send to librarian approval
-        if (isEmailVerified && !isLibrarianApproved) {
-          setShouldRender(<Navigate to="/librarian-approval" state={{ userEmail: user.email }} replace />);
-          return;
-        }
-
         // If email not verified, route to verify-email when appropriate
-        if (!isEmailVerified && currentPath !== "/verify-email") {
-          setShouldRender(<Navigate to="/verify-email" state={{ email: user.email }} replace />);
+        if (!isEmailVerified) {
+          if (currentPath === "/verify-email") {
+            setShouldRender(children);
+          } else {
+            setShouldRender(<Navigate to="/verify-email" state={{ email: user.email }} replace />);
+          }
           return;
         }
 
-        // If email verified and approved but missing fingerprint, allow register-fingerprint
+        // If email verified but librarian approval pending
+        if (isEmailVerified && !isLibrarianApproved) {
+          if (currentPath === "/librarian-approval") {
+            setShouldRender(children);
+          } else {
+            setShouldRender(<Navigate to="/librarian-approval" state={{ userEmail: user.email }} replace />);
+          }
+          return;
+        }
+
+        // If email verified and approved but missing fingerprint
         if (isEmailVerified && isLibrarianApproved && !hasFingerprint) {
           if (currentPath === "/register-fingerprint") {
             setShouldRender(children);
@@ -242,29 +262,11 @@ function App() {
           return;
         }
 
-        // If we're on verify-email and it's now verified, move on to approval or fingerprint
-        if (currentPath === "/verify-email" && isEmailVerified) {
-          if (!isLibrarianApproved) {
-            setShouldRender(<Navigate to="/librarian-approval" state={{ userEmail: user.email }} replace />);
-          } else if (!hasFingerprint) {
-            setShouldRender(<Navigate to="/register-fingerprint" state={{ userEmail: user.email }} replace />);
-          } else {
-            setShouldRender(<Navigate to="/dashboard" replace />);
-          }
-          return;
-        }
-
-        // If we're on librarian-approval but email not verified, send back to verify-email
-        if (currentPath === "/librarian-approval" && !isEmailVerified) {
-          setShouldRender(<Navigate to="/verify-email" state={{ email: user.email }} replace />);
-          return;
-        }
-
         setShouldRender(children);
       };
 
       checkVerificationAccess();
-    }, [children, location.pathname]);
+    }, [children, location.pathname, lastPath, shouldRender]);
 
     if (shouldRender === null) {
       return (

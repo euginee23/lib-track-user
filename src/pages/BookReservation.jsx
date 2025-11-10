@@ -263,7 +263,7 @@ function BookReservation() {
           reason: reservation.reason,
           coverImage: coverImage,
           reservation_type: reservation.reservation_type,
-          position: 1, // You might calculate this based on pending reservations
+    position: reservation.position || 1,
           claimDeadline: reservation.status?.toLowerCase() === 'approved' 
             ? new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
             : null
