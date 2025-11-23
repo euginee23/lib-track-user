@@ -122,23 +122,24 @@ export default function Register() {
 
     const missingFields = [];
 
-    if (!firstName) missingFields.push("First Name");
-    if (!middleName) missingFields.push("Middle Name");
-    if (!lastName) missingFields.push("Last Name");
-    if (!email) missingFields.push("Email");
-    if (!contactNumber) missingFields.push("Contact Number");
+    // Trim all string inputs and validate they're not empty or whitespace-only
+    if (!firstName || !firstName.trim()) missingFields.push("First Name");
+    if (!middleName || !middleName.trim()) missingFields.push("Middle Name");
+    if (!lastName || !lastName.trim()) missingFields.push("Last Name");
+    if (!email || !email.trim()) missingFields.push("Email");
+    if (!contactNumber || !contactNumber.trim()) missingFields.push("Contact Number");
     if (!college) missingFields.push("College/Department");
-    if (!password) missingFields.push("Password");
-    if (!confirmPassword) missingFields.push("Confirm Password");
+    if (!password || !password.trim()) missingFields.push("Password");
+    if (!confirmPassword || !confirmPassword.trim()) missingFields.push("Confirm Password");
 
     if (userType === "student") {
-      if (!studentId) missingFields.push("Student ID");
+      if (!studentId || !studentId.trim()) missingFields.push("Student ID");
       if (!yearLevel) missingFields.push("Year Level");
       if (!corImage) missingFields.push("Photo of your COR");
       if (!profileImage) missingFields.push("Profile Picture");
     } else {
-      if (!facultyId) missingFields.push("Faculty ID");
-      if (!position) missingFields.push("Position");
+      if (!facultyId || !facultyId.trim()) missingFields.push("Faculty ID");
+      if (!position || !position.trim()) missingFields.push("Position");
       if (!profileImage) missingFields.push("Profile Picture");
     }
 
@@ -158,23 +159,23 @@ export default function Register() {
     const finalPosition = userType === "student" ? "Student" : position;
 
     const user = {
-      firstName,
-      middleName,
-      lastName,
-      email,
-      contactNumber,
+      firstName: firstName.trim(),
+      middleName: middleName.trim(),
+      lastName: lastName.trim(),
+      email: email.trim(),
+      contactNumber: contactNumber.trim(),
       college,
-      position: finalPosition,
-      password,
+      position: finalPosition.trim(),
+      password: password.trim(),
       profileImage,
       ...(userType === "student"
         ? {
-            studentId,
+            studentId: studentId.trim(),
             yearLevel,
             corImage,
           }
         : {
-            facultyId,
+            facultyId: facultyId.trim(),
           }),
     };
 

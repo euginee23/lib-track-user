@@ -55,8 +55,8 @@ export default function LibrarianApproval() {
         // If email verification was revoked, redirect back to email verification
         navigate("/verify-email", { state: { email: user.email }, replace: true });
       } else if (isLibrarianApproved) {
-        // If approved, redirect to home
-        navigate("/home", { replace: true });
+        // If approved, redirect to dashboard
+        navigate("/dashboard", { replace: true });
       }
     }
   }
