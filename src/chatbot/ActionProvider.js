@@ -1,3 +1,6 @@
+import chatbotService from '../../api/chatbot/chatbotService';
+import authService from '../utils/auth';
+
 class ActionProvider {
   constructor(createChatbotMessage, setStateFunc, createClientMessage) {
     this.createChatbotMessage = createChatbotMessage;
@@ -5,11 +8,111 @@ class ActionProvider {
     this.createClientMessage = createClientMessage;
   }
 
+  // This method will be called by MessageParser to handle AI responses
+  async handleAIResponse(userMessage) {
+    try {
+      // Show typing indicator
+      const typingMessage = this.createChatbotMessage('Thinking...');
+      this.updateChatbotState(typingMessage);
+
+      // Get user info if available
+      let userInfo = {};
+      try {
+        const user = authService.getUser();
+        if (user) {
+          userInfo = {
+            userId: user.user_id,
+            userName: user.first_name || 'User',
+            userRole: user.role || 'student'
+          };
+        }
+      } catch (error) {
+        console.log('Could not get user info:', error);
+      }
+
+      // Try streaming API for faster perceived responsiveness
+      let usedStream = false;
+      try {
+        await chatbotService.sendMessageStream(userMessage, userInfo, (chunk) => {
+          // chunk: { type, content, ... }
+          if (chunk.type === 'content') {
+            // On first content chunk, replace typing indicator with assistant message
+            this.setState((prevState) => {
+              const msgs = prevState.messages.slice();
+              // Remove typing indicator if still present
+              if (msgs.length > 0 && msgs[msgs.length - 1].message === 'Thinking...') {
+                msgs.pop();
+                msgs.push(this.createChatbotMessage(chunk.content));
+                return { ...prevState, messages: msgs };
+              }
+
+              // Otherwise append/concatenate to last assistant message
+              if (msgs.length > 0) {
+                const last = msgs[msgs.length - 1];
+                // Update only if last message is from bot (no widget)
+                if (last && !last.widget) {
+                  const updated = this.createChatbotMessage((last.message || '') + chunk.content);
+                  msgs[msgs.length - 1] = updated;
+                  return { ...prevState, messages: msgs };
+                }
+              }
+
+              // Fallback: just push
+              msgs.push(this.createChatbotMessage(chunk.content));
+              return { ...prevState, messages: msgs };
+            });
+          } else if (chunk.type === 'error') {
+            // Replace typing with error message
+            this.setState((prevState) => {
+              const msgs = prevState.messages.slice(0, -1);
+              msgs.push(this.createChatbotMessage("I'm sorry, I'm having trouble connecting to the AI service right now. Please try again later."));
+              return { ...prevState, messages: msgs };
+            });
+          }
+        });
+
+        usedStream = true;
+      } catch (streamErr) {
+        console.warn('Streaming failed, falling back to regular request:', streamErr);
+      }
+
+      if (!usedStream) {
+        // Fallback to non-streaming send
+        const response = await chatbotService.sendMessage(userMessage, userInfo);
+
+        // Remove typing indicator and add AI response
+        this.setState((prevState) => {
+          const messages = prevState.messages.slice(0, -1); // Remove typing message
+          return {
+            ...prevState,
+            messages: [...messages, this.createChatbotMessage(response.message)]
+          };
+        });
+      }
+
+    } catch (error) {
+      console.error('Error getting AI response:', error);
+      
+      // Remove typing indicator and show error
+      this.setState((prevState) => {
+        const messages = prevState.messages.slice(0, -1);
+        return {
+          ...prevState,
+          messages: [
+            ...messages,
+            this.createChatbotMessage(
+              "I'm sorry, I'm having trouble connecting to the AI service right now. Please try again later."
+            )
+          ]
+        };
+      });
+    }
+  }
+
   handleGreeting() {
     // Try to get user info from auth service
     let userName = 'there';
     try {
-      const authService = require('../utils/auth').default;
       const user = authService.getUser();
       userName = user ? user.first_name : 'there';
     } catch (error) {

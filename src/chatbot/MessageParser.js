@@ -1,69 +1,21 @@
-import { processMessage, extractIntent, extractEntities, extractTraits } from './services/witaiService';
-
 class MessageParser {
   constructor(actionProvider, state) {
     this.actionProvider = actionProvider;
     this.state = state;
+    this.useAI = true; // Set to true to use Ollama AI backend
   }
 
   async parse(message) {
-    try {
-      // Process message with Wit.ai NLP
-      const witResponse = await processMessage(message);
-      
-      // Extract intent, entities, and traits
-      const intent = extractIntent(witResponse);
-      const entities = extractEntities(witResponse, 'book_title:book_title');
-      const traits = extractTraits(witResponse);
-      
-      console.log('Wit.ai Response:', { intent, entities, traits, witResponse });
-
-      // Handle based on detected intent
-      if (traits.wit$greetings) {
-        return this.actionProvider.handleGreeting();
-      }
-
-      switch (intent) {
-        case 'book_availability':
-          return this.actionProvider.handleBookAvailability(entities);
-          
-        case 'book_search':
-          // Extract book title if present
-          const bookTitle = entities.length > 0 ? entities[0].value : null;
-          return this.actionProvider.handleBookSearch(message, bookTitle);
-          
-        case 'get_recommendations':
-          return this.actionProvider.handlePersonalizedRecommendations();
-          
-        case 'system_guidance':
-        case 'how_to':
-          return this.actionProvider.handleSystemGuidance();
-          
-        case 'faq':
-          return this.actionProvider.handleFAQ();
-          
-        case 'borrow_info':
-          return this.actionProvider.handleBorrowInfo();
-          
-        case 'library_hours':
-          return this.actionProvider.handleLibraryHours();
-          
-        case 'help':
-          return this.actionProvider.handleHelp();
-          
-        default:
-          // Fallback to keyword matching if no intent detected
-          return this.fallbackParse(message);
-      }
-      
-    } catch (error) {
-      console.error('Error processing message with Wit.ai:', error);
-      // Fallback to keyword-based parsing if Wit.ai fails
-      return this.fallbackParse(message);
+    // Use AI backend for all messages
+    if (this.useAI) {
+      return this.actionProvider.handleAIResponse(message);
     }
+
+    // Fallback to original parsing logic if AI is disabled
+    return this.fallbackParse(message);
   }
 
-  // Fallback keyword-based parsing (backup if Wit.ai fails or has low confidence)
+  // Fallback keyword-based parsing (backup if AI is disabled)
   fallbackParse(message) {
     const lowerCaseMessage = message.toLowerCase();
     
