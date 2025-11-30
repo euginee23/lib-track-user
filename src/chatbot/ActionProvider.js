@@ -32,6 +32,7 @@ class ActionProvider {
 
       // Try streaming API for faster perceived responsiveness
       let usedStream = false;
+      let streamEmitted = false; // whether we received at least one content chunk
       try {
         // Mark that we attempted streaming immediately to avoid falling back
         // to the non-streaming path if the stream is long-lived.
@@ -44,6 +45,41 @@ class ActionProvider {
           if (chunk.type === 'session' || chunk.type === 'info') return;
 
           if (chunk.type === 'content') {
+            // sanitize JSON-like tool-call emissions (some backends emit tool-calls as JSON)
+            const isLikelyToolCallString = (txt) => {
+              if (!txt || typeof txt !== 'string') return false;
+              const s = txt.trim();
+              if (!(s.startsWith('{') || s.startsWith('['))) return false;
+              try {
+                const p = JSON.parse(s);
+                if (Array.isArray(p)) return p.length > 0 && (p[0].type === 'function' || p[0].function || p[0].name);
+                return p && (p.type === 'function' || p.function || p.name);
+              } catch (e) {
+                return false;
+              }
+            };
+
+            if (isLikelyToolCallString(chunk.content)) {
+              // show a single info message once instead of raw JSON
+              if (!streamEmitted) {
+                // replace typing with a small info message
+                this.setState((prevState) => {
+                  const msgs = prevState.messages.slice();
+                  if (msgs.length > 0 && msgs[msgs.length - 1].message === 'Thinking...') {
+                    msgs.pop();
+                    msgs.push(this.createChatbotMessage('Invoking tools...'));
+                    return { ...prevState, messages: msgs };
+                  }
+                  // otherwise append info
+                  msgs.push(this.createChatbotMessage('Invoking tools...'));
+                  return { ...prevState, messages: msgs };
+                });
+                streamEmitted = true;
+              }
+              return;
+            }
+
+            streamEmitted = true;
             // On first content chunk, replace typing indicator with assistant message
             this.setState((prevState) => {
               const msgs = prevState.messages.slice();
@@ -80,9 +116,24 @@ class ActionProvider {
           }
         });
       } catch (streamErr) {
-        console.warn('Streaming failed, falling back to regular request:', streamErr);
+        console.warn('Streaming failed:', streamErr);
         // If the stream setup failed synchronously, mark usedStream false
-        usedStream = false;
+        // If the stream failed after emitting content, DO NOT automatically fallback
+        // to the non-streaming request to avoid duplicate or restarted replies.
+        if (!streamEmitted) {
+          console.warn('No content received from stream; falling back to non-streaming request');
+          usedStream = false;
+        } else {
+          console.warn('Stream failed after partial content was received; not falling back to avoid duplicate responses');
+          // append a short message indicating interruption and offer retry
+          this.setState((prevState) => {
+            const msgs = prevState.messages.slice();
+            msgs.push(this.createChatbotMessage('⚠️ Response interrupted. Tap resend to try again.'));
+            return { ...prevState, messages: msgs };
+          });
+          // do not fallback
+          usedStream = true;
+        }
       }
 
       if (!usedStream) {
