@@ -4,7 +4,24 @@ import axios from 'axios';
 // deployed frontend doesn't call localhost and avoids mixed-content issues.
 const ENV_BASE = import.meta.env.VITE_CHATBOT_BASE_URL || '';
 const DEFAULT_PATH = '/api/chatbot';
-const API_BASE_URL = ENV_BASE ? ENV_BASE.replace(/\/$/, '') + DEFAULT_PATH : DEFAULT_PATH;
+
+// Build-time base. We'll allow a runtime override in the browser so deployed
+// builds don't accidentally call localhost if the env var was set to it
+let API_BASE_URL = ENV_BASE ? ENV_BASE.replace(/\/$/, '') + DEFAULT_PATH : DEFAULT_PATH;
+
+try {
+  if (typeof window !== 'undefined' && window.location) {
+    const clientHost = window.location.hostname;
+    // If the client is not running on localhost but the resolved API_BASE_URL
+    // points to localhost, switch to the relative default path so the browser
+    // talks to the same origin (avoids calling user's machine).
+    if (!['localhost', '127.0.0.1'].includes(clientHost) && /localhost|127\\.0\\.0\\.1/.test(API_BASE_URL)) {
+      API_BASE_URL = DEFAULT_PATH;
+    }
+  }
+} catch (e) {
+  // ignore errors during runtime detection
+}
 
 /**
  * Ollama-powered Chatbot API Service
