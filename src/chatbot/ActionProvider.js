@@ -33,8 +33,16 @@ class ActionProvider {
       // Try streaming API for faster perceived responsiveness
       let usedStream = false;
       try {
+        // Mark that we attempted streaming immediately to avoid falling back
+        // to the non-streaming path if the stream is long-lived.
+        usedStream = true;
         await chatbotService.sendMessageStream(userMessage, userInfo, (chunk) => {
           // chunk: { type, content, ... }
+          if (!chunk || !chunk.type) return;
+
+          // ignore session/info meta chunks
+          if (chunk.type === 'session' || chunk.type === 'info') return;
+
           if (chunk.type === 'content') {
             // On first content chunk, replace typing indicator with assistant message
             this.setState((prevState) => {
@@ -63,6 +71,7 @@ class ActionProvider {
             });
           } else if (chunk.type === 'error') {
             // Replace typing with error message
+            console.error('ChatbotService: received error chunk:', chunk);
             this.setState((prevState) => {
               const msgs = prevState.messages.slice(0, -1);
               msgs.push(this.createChatbotMessage("I'm sorry, I'm having trouble connecting to the AI service right now. Please try again later."));
@@ -70,10 +79,10 @@ class ActionProvider {
             });
           }
         });
-
-        usedStream = true;
       } catch (streamErr) {
         console.warn('Streaming failed, falling back to regular request:', streamErr);
+        // If the stream setup failed synchronously, mark usedStream false
+        usedStream = false;
       }
 
       if (!usedStream) {
