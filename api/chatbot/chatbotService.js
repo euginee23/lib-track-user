@@ -23,6 +23,19 @@ try {
   // ignore errors during runtime detection
 }
 
+// Extra guard: if the page is served over HTTPS (deployed) and the API_BASE_URL
+// still points to localhost (e.g. embedded at build time), force the relative
+// path so browsers do not attempt mixed-content or client-localhost connections.
+try {
+  if (typeof window !== 'undefined' && window.location && window.location.protocol === 'https:') {
+    if (/localhost|127\.0\.0\.1/.test(API_BASE_URL)) {
+      API_BASE_URL = DEFAULT_PATH;
+    }
+  }
+} catch (e) {
+  // ignore
+}
+
 /**
  * Ollama-powered Chatbot API Service
  * Handles communication with the AI chatbot backend
