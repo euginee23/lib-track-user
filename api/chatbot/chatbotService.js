@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:3002';
+const API_BASE_URL = 'https://api.libtrack.codehub.site';
 
 /**
  * Ollama-powered Chatbot API Service
