@@ -1,6 +1,10 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://127.0.0.1:3002';
+// Use Vite env var when available; fallback to relative API path so
+// deployed frontend doesn't call localhost and avoids mixed-content issues.
+const ENV_BASE = import.meta.env.VITE_CHATBOT_BASE_URL || '';
+const DEFAULT_PATH = '/api/chatbot';
+const API_BASE_URL = ENV_BASE ? ENV_BASE.replace(/\/$/, '') + DEFAULT_PATH : DEFAULT_PATH;
 
 /**
  * Ollama-powered Chatbot API Service
@@ -10,7 +14,14 @@ const API_BASE_URL = 'http://127.0.0.1:3002';
 class ChatbotService {
   constructor() {
     this.sessionId = null;
-    this.baseURL = `${API_BASE_URL}/api/chatbot`;
+    this.baseURL = `${API_BASE_URL}`;
+    // Log the resolved base URL so deployed builds can be debugged easily
+    // (this will appear in browser console of deployed app)
+    try {
+      console.warn('ChatbotService: using API base URL ->', this.baseURL);
+    } catch (e) {
+      // ignore if console is not available in some environments
+    }
   }
 
   /**
