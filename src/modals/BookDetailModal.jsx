@@ -671,56 +671,6 @@ const BookDetailModal = ({ book, onClose, onReserve }) => {
                             </span>
                           </div>
                         </div>
-
-                        {/* Reserve Button */}
-                        <button
-                          onClick={() => handleReserveCopy(copy.book_id)}
-                          disabled={isReserving}
-                          style={{
-                            background: isReserving
-                              ? 'linear-gradient(135deg, #10B981, #34D399)'
-                              : 'linear-gradient(135deg, #0C969C, #6BA3BE)',
-                            color: 'white',
-                            border: 'none',
-                            borderRadius: '10px',
-                            fontSize: isMobile ? '12px' : '13px',
-                            fontWeight: '700',
-                            padding: isMobile ? '10px 16px' : '11px 18px',
-                            whiteSpace: 'nowrap',
-                            boxShadow: '0 4px 12px rgba(12, 150, 156, 0.3)',
-                            transition: 'all 0.3s ease',
-                            cursor: isReserving ? 'not-allowed' : 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            alignSelf: 'flex-start',
-                            marginTop: '8px'
-                          }}
-                          onMouseEnter={(e) => {
-                            if (!isMobile && !isReserving) {
-                              e.target.style.transform = 'translateY(-2px)';
-                              e.target.style.boxShadow = '0 6px 16px rgba(12, 150, 156, 0.4)';
-                            }
-                          }}
-                          onMouseLeave={(e) => {
-                            if (!isMobile && !isReserving) {
-                              e.target.style.transform = 'translateY(0)';
-                              e.target.style.boxShadow = '0 4px 12px rgba(12, 150, 156, 0.3)';
-                            }
-                          }}
-                        >
-                          {isReserving ? (
-                            <>
-                              <FaCheckCircle size={14} />
-                              Reserved!
-                            </>
-                          ) : (
-                            <>
-                              <FaBookmark size={12} />
-                              Reserve This Copy
-                            </>
-                          )}
-                        </button>
                       </div>
                     </div>
                   </div>

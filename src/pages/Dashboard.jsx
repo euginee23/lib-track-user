@@ -13,7 +13,7 @@ export default function Dashboard() {
   const [ongoing, setOngoing] = useState([]);
   const [finesSummary, setFinesSummary] = useState(null);
   const [history, setHistory] = useState([]);
-  const [activeTab, setActiveTab] = useState('borrowed'); // 'borrowed', 'history', 'returned', 'payments'
+  const [activeTab, setActiveTab] = useState('borrowed');
   const [isMobile, setIsMobile] = useState(false);
 
   const [selectedReceipt, setSelectedReceipt] = useState(null);
@@ -241,10 +241,20 @@ export default function Dashboard() {
   };
 
   // derive quick stats
+  // Only count items that are:
+  // 1. Not returned (already filtered in 'ongoing')
+  // 2. Actually overdue (past due date)
+  // 3. Don't have paid or waived penalties
   const overdueCount = ongoing.filter(t => {
     try {
       const d = t.due_date ? new Date(t.due_date) : null;
-      return d ? (Math.ceil((d - new Date()) / (1000*60*60*24)) < 0) : false;
+      const isPastDue = d ? (Math.ceil((d - new Date()) / (1000*60*60*24)) < 0) : false;
+      
+      // Don't count if penalty is paid or waived
+      const penaltyPaidOrWaived = t.penaltyStatus === 'Paid' || 
+                                   (t.penaltyStatus && t.penaltyStatus.toLowerCase() === 'waived');
+      
+      return isPastDue && !penaltyPaidOrWaived;
     } catch {
       return false;
     }

@@ -689,7 +689,7 @@ function BookReservation() {
                         fontSize: isMobile ? '20px' : '24px', 
                         fontWeight: '700' 
                       }}>
-                        {myReservations.length}
+                        {myReservations.filter(r => r.status !== 'cancelled' && r.status !== 'rejected').length}
                       </div>
                       <small style={{ 
                         fontSize: isMobile ? '10px' : '12px', 
