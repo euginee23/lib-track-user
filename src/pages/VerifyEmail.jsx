@@ -105,24 +105,30 @@ export default function VerifyEmail() {
       
       ToastNotification.success("Email verified successfully!");
       
-      // Update the stored user data with new verification status
+      // Update the stored user data immediately with verification status
       const currentUser = authService.getUser();
       if (currentUser) {
         const updatedUser = {
           ...currentUser,
-          email_verified: 1
+          email_verification: 1
         };
         authService.updateUser(updatedUser);
       }
       
-      // Navigation Logic: Email verified, now check librarian approval
-      if (result.librarian_approval === 1) {
-        // Both email verified and librarian approved - go to home
-        navigate("/home", { replace: true });
-      } else {
-        // Email verified but librarian approval pending
-        navigate("/librarian-approval", { state: { userEmail: email }, replace: true });
-      }
+      // Force immediate navigation after success
+      setTimeout(async () => {
+        // Refresh user data from server to get latest status
+        await authService.refreshUserData();
+        
+        // Navigation Logic: Email verified, now check librarian approval
+        if (result.librarian_approval === 1) {
+          // Both email verified and librarian approved - go to dashboard
+          window.location.href = "/dashboard";
+        } else {
+          // Email verified but librarian approval pending
+          window.location.href = "/librarian-approval";
+        }
+      }, 1000); // 1 second delay to show success message
       
     } catch (error) {
       ToastNotification.error(error.message);

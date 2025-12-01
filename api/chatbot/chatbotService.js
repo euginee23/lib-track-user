@@ -41,6 +41,12 @@ class ChatbotService {
   constructor() {
     this.sessionId = null;
     this.baseURL = `${API_BASE_URL}`;
+    this.isOnline = true; // Track service availability
+    this.lastHealthCheck = 0;
+    this.healthCheckInterval = 60000; // Check every minute
+    this.requestQueue = [];
+    this.maxRetries = 2;
+    
     // Log the resolved base URL so deployed builds can be debugged easily
     // (this will appear in browser console of deployed app)
     try {
@@ -71,35 +77,50 @@ class ChatbotService {
    * @param {Object} userInfo - User information (userId, userName, userRole)
    */
   async sendMessage(message, userInfo = {}) {
-    try {
-      // Ensure we have a session
-      if (!this.sessionId) {
-        await this.initializeSession(userInfo.userId);
-      }
-      const url = `${this.baseURL}/chat`;
-      try { console.debug('ChatbotService: sending message to', url, { message, sessionId: this.sessionId, userInfo }); } catch (e) {}
-
-      const response = await axios.post(url, {
-        message,
-        sessionId: this.sessionId,
-        userId: userInfo.userId,
-        userName: userInfo.userName,
-        userRole: userInfo.userRole
-      });
-
-      return response.data;
-    } catch (error) {
+    let retries = 0;
+    
+    while (retries <= this.maxRetries) {
       try {
-        console.error('ChatbotService: sendMessage failed', {
+        // Ensure we have a session
+        if (!this.sessionId) {
+          await this.initializeSession(userInfo.userId);
+        }
+        const url = `${this.baseURL}/chat`;
+        try { console.debug('ChatbotService: sending message to', url, { message, sessionId: this.sessionId, userInfo }); } catch (e) {}
+
+        const response = await axios.post(url, {
           message,
           sessionId: this.sessionId,
-          baseURL: this.baseURL,
-          errorMessage: error.message,
-          status: error.response?.status,
-          responseData: error.response?.data
+          userId: userInfo.userId,
+          userName: userInfo.userName,
+          userRole: userInfo.userRole
+        }, {
+          timeout: 30000 // 30 second timeout
         });
-      } catch (e) {}
-      throw new Error(error.response?.data?.message || error.message || 'Failed to send message');
+
+        this.isOnline = true;
+        return response.data;
+      } catch (error) {
+        retries++;
+        
+        if (retries > this.maxRetries) {
+          this.isOnline = false;
+          try {
+            console.error('ChatbotService: sendMessage failed after retries', {
+              message,
+              sessionId: this.sessionId,
+              baseURL: this.baseURL,
+              errorMessage: error.message,
+              status: error.response?.status,
+              responseData: error.response?.data
+            });
+          } catch (e) {}
+          throw new Error(error.response?.data?.message || error.message || 'Failed to send message');
+        }
+        
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * retries));
+      }
     }
   }
 
@@ -262,6 +283,36 @@ class ChatbotService {
    */
   setSessionId(sessionId) {
     this.sessionId = sessionId;
+  }
+  
+  /**
+   * Check if service is online (cached check)
+   */
+  isServiceOnline() {
+    return this.isOnline;
+  }
+  
+  /**
+   * Perform health check periodically
+   */
+  async performHealthCheck() {
+    const now = Date.now();
+    
+    // Only check if enough time has passed
+    if (now - this.lastHealthCheck < this.healthCheckInterval) {
+      return this.isOnline;
+    }
+    
+    this.lastHealthCheck = now;
+    
+    try {
+      const response = await axios.get(`${this.baseURL}/status`, { timeout: 5000 });
+      this.isOnline = response.data.success;
+      return this.isOnline;
+    } catch (error) {
+      this.isOnline = false;
+      return false;
+    }
   }
 }
 

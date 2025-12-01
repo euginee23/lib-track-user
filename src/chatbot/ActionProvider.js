@@ -6,38 +6,132 @@ class ActionProvider {
     this.createChatbotMessage = createChatbotMessage;
     this.setState = setStateFunc;
     this.createClientMessage = createClientMessage;
+    
+    // Performance optimizations
+    this.responseCache = new Map(); // Cache for common queries
+    this.cacheExpiry = 5 * 60 * 1000; // 5 minutes cache
+    this.pendingRequest = null; // Track pending API calls
+    this.lastRequestTime = 0;
+    this.minRequestInterval = 500; // Minimum time between requests (ms)
+    
+    // Pre-load common data
+    this.preloadCommonData();
+  }
+  
+  // Pre-load frequently accessed data
+  async preloadCommonData() {
+    try {
+      // Pre-fetch FAQs and popular books in background
+      const userInfo = this.getUserInfo();
+      
+      // These will be cached for quick access
+      setTimeout(() => {
+        this.cacheQuery('library_hours', () => 
+          Promise.resolve('Monday - Friday: 8:00 AM - 6:00 PM\nSaturday: 9:00 AM - 4:00 PM\nSunday: Closed\nDuring exam periods, hours extended until 8:00 PM on weekdays.')
+        );
+      }, 100);
+    } catch (error) {
+      // Silent fail - preloading is optional
+    }
+  }
+  
+  // Get user info helper
+  getUserInfo() {
+    let userInfo = {};
+    try {
+      const user = authService.getUser();
+      if (user) {
+        // Try different possible field names for first name
+        const firstName = user.first_name || user.firstName || user.name || 'User';
+        
+        userInfo = {
+          userId: user.user_id || user.userId || user.id,
+          userName: firstName,
+          userRole: user.role || 'student'
+        };
+      }
+    } catch (error) {
+      console.log('Could not get user info:', error);
+    }
+    return userInfo;
+  }
+  
+  // Cache helper
+  async cacheQuery(key, queryFn) {
+    const cached = this.responseCache.get(key);
+    if (cached && (Date.now() - cached.timestamp < this.cacheExpiry)) {
+      return cached.data;
+    }
+    
+    const data = await queryFn();
+    this.responseCache.set(key, { data, timestamp: Date.now() });
+    return data;
+  }
+  
+  // Clear old cache entries
+  clearExpiredCache() {
+    const now = Date.now();
+    for (const [key, value] of this.responseCache.entries()) {
+      if (now - value.timestamp > this.cacheExpiry) {
+        this.responseCache.delete(key);
+      }
+    }
+  }
+  
+  // Throttle requests to prevent spam
+  shouldThrottleRequest() {
+    const now = Date.now();
+    if (now - this.lastRequestTime < this.minRequestInterval) {
+      return true;
+    }
+    this.lastRequestTime = now;
+    return false;
   }
 
   // This method will be called by MessageParser to handle AI responses
   async handleAIResponse(userMessage) {
     try {
+      // Throttle rapid requests
+      if (this.shouldThrottleRequest()) {
+        console.log('Request throttled - too frequent');
+        return;
+      }
+      
+      // Check cache first for exact matches
+      const cacheKey = `ai_${userMessage.toLowerCase().trim()}`;
+      const cached = this.responseCache.get(cacheKey);
+      if (cached && (Date.now() - cached.timestamp < this.cacheExpiry)) {
+        this.updateChatbotState(this.createChatbotMessage(cached.data));
+        return;
+      }
+      
+      // Clear expired cache entries periodically
+      if (Math.random() < 0.1) { // 10% chance
+        this.clearExpiredCache();
+      }
+      
+      // Cancel any pending request
+      if (this.pendingRequest) {
+        this.pendingRequest = null;
+      }
+      
       // Show typing indicator
       const typingMessage = this.createChatbotMessage('Thinking...');
       this.updateChatbotState(typingMessage);
 
       // Get user info if available
-      let userInfo = {};
-      try {
-        const user = authService.getUser();
-        if (user) {
-          userInfo = {
-            userId: user.user_id,
-            userName: user.first_name || 'User',
-            userRole: user.role || 'student'
-          };
-        }
-      } catch (error) {
-        console.log('Could not get user info:', error);
-      }
+      const userInfo = this.getUserInfo();
 
       // Try streaming API for faster perceived responsiveness
       let usedStream = false;
       let streamEmitted = false; // whether we received at least one content chunk
+      let fullResponse = ''; // Accumulate for caching
+      
       try {
         // Mark that we attempted streaming immediately to avoid falling back
         // to the non-streaming path if the stream is long-lived.
         usedStream = true;
-        await chatbotService.sendMessageStream(userMessage, userInfo, (chunk) => {
+        this.pendingRequest = chatbotService.sendMessageStream(userMessage, userInfo, (chunk) => {
           // chunk: { type, content, ... }
           if (!chunk || !chunk.type) return;
 
@@ -80,6 +174,8 @@ class ActionProvider {
             }
 
             streamEmitted = true;
+            fullResponse += chunk.content; // Accumulate for caching
+            
             // On first content chunk, replace typing indicator with assistant message
             this.setState((prevState) => {
               const msgs = prevState.messages.slice();
@@ -115,6 +211,14 @@ class ActionProvider {
             });
           }
         });
+        
+        // Cache the complete response
+        if (fullResponse && streamEmitted) {
+          this.responseCache.set(cacheKey, { 
+            data: fullResponse, 
+            timestamp: Date.now() 
+          });
+        }
       } catch (streamErr) {
         console.warn('Streaming failed:', streamErr);
         // If the stream setup failed synchronously, mark usedStream false
@@ -140,6 +244,14 @@ class ActionProvider {
         // Fallback to non-streaming send
         const response = await chatbotService.sendMessage(userMessage, userInfo);
 
+        // Cache the response
+        if (response && response.message) {
+          this.responseCache.set(cacheKey, { 
+            data: response.message, 
+            timestamp: Date.now() 
+          });
+        }
+
         // Remove typing indicator and add AI response
         this.setState((prevState) => {
           const messages = prevState.messages.slice(0, -1); // Remove typing message
@@ -149,9 +261,12 @@ class ActionProvider {
           };
         });
       }
+      
+      this.pendingRequest = null;
 
     } catch (error) {
       console.error('Error getting AI response:', error);
+      this.pendingRequest = null;
       
       // Remove typing indicator and show error
       this.setState((prevState) => {
@@ -174,7 +289,13 @@ class ActionProvider {
     let userName = 'there';
     try {
       const user = authService.getUser();
-      userName = user ? user.first_name : 'there';
+      if (user && user.first_name) {
+        userName = user.first_name;
+      } else if (user && user.firstName) {
+        userName = user.firstName;
+      } else if (user && user.name) {
+        userName = user.name;
+      }
     } catch (error) {
       console.log('Could not get user info:', error);
     }
@@ -293,7 +414,11 @@ class ActionProvider {
   }
 
   handleLibraryHours() {
-    const message = this.createChatbotMessage('Our library hours are:\n\nMonday - Friday: 8:00 AM - 6:00 PM\nSaturday: 9:00 AM - 4:00 PM\nSunday: Closed\n\nDuring exam periods, we extend hours until 8:00 PM on weekdays.');
+    const hours = '📅 **Library Hours**\n\nMonday - Friday: 8:00 AM - 6:00 PM\nSaturday: 9:00 AM - 4:00 PM\nSunday: Closed\n\n⚠️ During exam periods, we extend hours until 8:00 PM on weekdays.';
+    const message = this.createChatbotMessage(hours);
+    
+    // Cache this response
+    this.responseCache.set('library_hours', { data: hours, timestamp: Date.now() });
     
     this.updateChatbotState(message);
   }

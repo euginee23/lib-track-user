@@ -3,10 +3,67 @@ class MessageParser {
     this.actionProvider = actionProvider;
     this.state = state;
     this.useAI = true; // Set to true to use Ollama AI backend
+    
+    // Quick response cache for common patterns
+    this.quickResponses = {
+      hours: /\b(hours?|open|close|time|schedule|when)\b/i,
+      greeting: /^(hi|hello|hey|greetings?|good\s+(morning|afternoon|evening))[!.?\s]*$/i,
+      thanks: /^(thanks?|thank\s*you|thx|appreciated?)[!.?\s]*$/i,
+      help: /^(help|assist|support)[!.?\s]*$/i
+    };
+  }
+  
+  // Fast pattern matching for instant responses
+  getQuickResponse(message) {
+    const trimmed = message.trim();
+    
+    // Greeting
+    if (this.quickResponses.greeting.test(trimmed)) {
+      return 'greeting';
+    }
+    
+    // Thanks
+    if (this.quickResponses.thanks.test(trimmed)) {
+      return 'thanks';
+    }
+    
+    // Library hours
+    if (trimmed.length < 50 && this.quickResponses.hours.test(trimmed) && 
+        /(library|open|close|hours?|time)/.test(trimmed)) {
+      return 'hours';
+    }
+    
+    // Help
+    if (this.quickResponses.help.test(trimmed)) {
+      return 'help';
+    }
+    
+    return null;
   }
 
   async parse(message) {
-    // Use AI backend for all messages
+    // Quick response check for instant feedback
+    const quickResponse = this.getQuickResponse(message);
+    
+    if (quickResponse === 'greeting') {
+      return this.actionProvider.handleGreeting();
+    }
+    
+    if (quickResponse === 'thanks') {
+      return this.actionProvider.updateChatbotState(
+        this.actionProvider.createChatbotMessage("You're welcome! Let me know if you need anything else. 😊")
+      );
+    }
+    
+    if (quickResponse === 'hours') {
+      return this.actionProvider.handleLibraryHours();
+    }
+    
+    if (quickResponse === 'help') {
+      return this.actionProvider.handleHelp();
+    }
+    
+    // Use AI backend for complex messages
     if (this.useAI) {
       return this.actionProvider.handleAIResponse(message);
     }

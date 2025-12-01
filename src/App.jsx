@@ -83,9 +83,15 @@ function App() {
           return;
         }
 
-        const isEmailVerified = user.email_verification === 1;
-        const isLibrarianApproved = user.librarian_approval === 1;
-        const hasFingerprint = user.hasFingerprint === true || user.hasFingerprint === 1;
+        console.log('ProtectedRoute user data:', {
+          email_verification: user.email_verification,
+          librarian_approval: user.librarian_approval,
+          hasFingerprint: user.hasFingerprint
+        });
+
+        const isEmailVerified = user.email_verification == 1;
+        const isLibrarianApproved = user.librarian_approval == 1;
+        const hasFingerprint = user.hasFingerprint === true || user.hasFingerprint == 1;
 
         if (!isEmailVerified) {
           setShouldRender(<Navigate to="/verify-email" state={{ email: user.email }} replace />);
@@ -221,9 +227,15 @@ function App() {
           return;
         }
 
-        const isEmailVerified = user.email_verification === 1;
-        const isLibrarianApproved = user.librarian_approval === 1;
-        const hasFingerprint = user.hasFingerprint === true || user.hasFingerprint === 1;
+        console.log('AuthRedirect user data:', {
+          email_verification: user.email_verification,
+          librarian_approval: user.librarian_approval,
+          hasFingerprint: user.hasFingerprint
+        });
+
+        const isEmailVerified = user.email_verification == 1;
+        const isLibrarianApproved = user.librarian_approval == 1;
+        const hasFingerprint = user.hasFingerprint === true || user.hasFingerprint == 1;
         const currentPath = location.pathname;
 
         // If everything is already satisfied, go to dashboard

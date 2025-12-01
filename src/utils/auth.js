@@ -104,7 +104,7 @@ class AuthService {
 
     try {
       const API_URL = import.meta.env.VITE_API_URL;
-      const response = await fetch(`${API_URL}/api/users/profile`, {
+      const response = await fetch(`${API_URL}/api/user/profile`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${token}`,
