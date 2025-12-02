@@ -344,23 +344,36 @@
 
 /* Fix message text wrapping and display */
 .react-chatbot-kit-chat-bot-message div[style*="background"] {
-  max-width: 300px !important;
+  max-width: 85% !important;
   min-height: auto !important;
   word-wrap: break-word !important;
   white-space: pre-wrap !important;
   overflow-wrap: break-word !important;
   overflow: visible !important;
   box-sizing: border-box !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
 }
 
 .react-chatbot-kit-user-chat-message div[style*="background"] {
-  max-width: 300px !important;
+  max-width: 75% !important;
   min-height: auto !important;
   word-wrap: break-word !important;
   white-space: pre-wrap !important;
   overflow-wrap: break-word !important;
   overflow: visible !important;
   box-sizing: border-box !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+}
+
+/* Better formatting for book lists and structured content */
+.react-chatbot-kit-chat-bot-message div[style*="background"] {
+  letter-spacing: 0.01em !important;
+}
+
+.react-chatbot-kit-chat-bot-message div[style*="background"] br {
+  display: block !important;
+  content: "" !important;
+  margin: 4px 0 !important;
 }
 
 /* Ensure message content is fully visible */

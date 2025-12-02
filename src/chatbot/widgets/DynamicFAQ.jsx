@@ -1,35 +1,50 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { getFaqs } from '../../../api/faqs/getFaqs';
 
 const DynamicFAQ = (props) => {
   const [expandedFaq, setExpandedFaq] = useState(null);
+  const [faqData, setFaqData] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // This would normally come from an API that admin can update
-  const faqData = [
-    {
-      id: 1,
-      question: "How many books can I borrow at once?",
-      answer: "Students can borrow up to 5 books at a time. Faculty members can borrow up to 10 books."
-    },
-    {
-      id: 2,
-      question: "How long can I keep a borrowed book?",
-      answer: "The standard loan period is 14 days for students and 30 days for faculty. Books can be renewed online if no holds are placed."
-    },
-    {
-      id: 3,
-      question: "What are the library fines for overdue books?",
-      answer: "Overdue fines are ₱5.00 per day per book. After 30 days overdue, the book is considered lost and replacement fees apply."
-    },
-    {
-      id: 4,
-      question: "Can I access library resources remotely?",
-      answer: "Yes! You can access our digital collections, databases, and e-books through the online portal using your student credentials."
-    }
-  ];
+  useEffect(() => {
+    const fetchFAQs = async () => {
+      try {
+        setLoading(true);
+        const data = await getFaqs();
+        setFaqData(data);
+      } catch (err) {
+        console.error('Error fetching FAQs:', err);
+        setError('Failed to load FAQs');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFAQs();
+  }, []);
 
   const toggleFaq = (faqId) => {
     setExpandedFaq(expandedFaq === faqId ? null : faqId);
   };
+
+  if (loading) {
+    return (
+      <div className="dynamic-faq" style={{ marginTop: '10px', textAlign: 'center', padding: '20px' }}>
+        <p style={{ fontSize: '0.85rem', color: '#666' }}>Loading FAQs...</p>
+      </div>
+    );
+  }
+
+  if (error || faqData.length === 0) {
+    return (
+      <div className="dynamic-faq" style={{ marginTop: '10px', textAlign: 'center', padding: '20px' }}>
+        <p style={{ fontSize: '0.85rem', color: '#666' }}>
+          {error || 'No FAQs available at the moment.'}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="dynamic-faq" style={{
